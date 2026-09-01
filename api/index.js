@@ -1,12 +1,11 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (WITH REAL DEVICE IP VERIFICATION 🛡️)
+| STAR EARNING BOT FOR VERCEL (STYLISH 2-COLUMN GRID BUTTONS 🔥)
 |--------------------------------------------------------------------------
 */
 
 const BOT_TOKEN = '8852283670:AAFnBJlS7mnNh6NIglslOGzNFj8OEZoMEB0';
 const BOT_USERNAME = 'AS_Star_Eran_Bot';
-const APP_URL = 'https://star-pay-inky.vercel.app'; // আপনার Vercel ডোমেইন
 
 const SUPER_ADMIN_ID = 8045367594;
 
@@ -500,25 +499,57 @@ async function isUserJoinedAllChannels(userId) {
     return true;
 }
 
+/*
+|--------------------------------------------------------------------------
+| ২ কলামের স্টাইলিশ ফোর্স জয়েন বাটন ফাংশন (2-COLUMN GRID)
+|--------------------------------------------------------------------------
+*/
 async function showForceJoin(chatId) {
     const forceChannels = await getAllForceChannels();
-    const keyboard = [];
+    const channelButtons = [];
+
+    // ফোর্স চ্যানেলগুলো লিস্টে যোগ করা
     for (const ch of Object.values(forceChannels)) {
         if (ch && ch.channel_link) {
-            keyboard.push([{ text: `📢 ${ch.channel_name || 'Join Channel'}`, url: ch.channel_link }]);
+            channelButtons.push({
+                text: `✅ ${ch.channel_name || 'JOIN CHANNEL'} ↗`,
+                url: ch.channel_link
+            });
         }
     }
+
+    // পেমেন্ট/ভেরিফিকেশন চ্যানেল থাকলে যোগ করা
     const paymentChannel = await getPaymentVerificationChannel();
     if (paymentChannel) {
         const link = paymentChannel.startsWith('@') ? `https://t.me/${paymentChannel.slice(1)}` : '';
-        if (link) keyboard.push([{ text: '📢 Payment/Verification Channel', url: link }]);
+        if (link) {
+            channelButtons.push({
+                text: '✅ PAYOUT CHANNEL ↗',
+                url: link
+            });
+        }
     }
-    
-    // ডিভাইস IP ভেরিফিকেশন ওয়েব লিঙ্ক বাটন
-    const verifyUrl = `${APP_URL}/api/index?action=verify_ip&uid=${chatId}`;
-    keyboard.push([{ text: '🔐 Verify Device & Join', url: verifyUrl }]);
 
-    await sendMessage(chatId, "🔐 <b>Verification Required</b>\n━━━━━━━━━━━━━━━━━━\n\nবট ব্যবহার করার আগে নিচের সকল Required Channel-এ Join করতে হবে।\n\nসবগুলোতে Join করার পরে নিচের <b>🔐 Verify Device & Join</b> বাটনে ক্লিক করে ডিভাইস ভেরিফিকেশন সম্পন্ন করুন।\n\n⚠️ <i>মনে রাখবেন: একই ডিভাইস বা ওয়াইফাই দিয়ে একাধিক অ্যাকাউন্ট খোলা নিষিদ্ধ।</i>", { inline_keyboard: keyboard });
+    // বাটনগুলোকে ২ কলামে (পাশাপাশি ২টি করে) সাজানো
+    const keyboard = [];
+    for (let i = 0; i < channelButtons.length; i += 2) {
+        if (i + 1 < channelButtons.length) {
+            keyboard.push([channelButtons[i], channelButtons[i + 1]]);
+        } else {
+            keyboard.push([channelButtons[i]]);
+        }
+    }
+
+    // নিচে বড় করে JOINED NOW ভেরিফিকেশন বাটন
+    keyboard.push([{ text: '🎁 JOINED NOW', callback_data: 'verify_join' }]);
+
+    const text = 
+        `🔐 <b>Required Channels Verification</b>\n` +
+        `━━━━━━━━━━━━━━━━━━\n\n` +
+        `বট ব্যবহার করার আগে নিচের সকল চ্যানেলে যুক্ত (Join) হতে হবে।\n\n` +
+        `সবগুলোতে Join করার পর নিচে থাকা <b>🎁 JOINED NOW</b> বাটনে চাপুন।`;
+
+    await sendMessage(chatId, text, { inline_keyboard: keyboard });
 }
 
 function buildWithdrawRequestText(withdraw, status = 'pending', processedBy = '') {
@@ -554,117 +585,6 @@ function buildWithdrawRequestText(withdraw, status = 'pending', processedBy = ''
 
 /*
 |--------------------------------------------------------------------------
-| IP VERIFICATION HANDLER (BROWSER WEB VERIFICATION)
-|--------------------------------------------------------------------------
-*/
-async function handleDeviceIpVerification(req, res) {
-    const uid = String(req.query.uid || '').trim();
-    if (!uid || !/^\d+$/.test(uid)) {
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.status(400).send(renderHtmlPage('❌ Invalid Request', 'অকার্যকর ইউজার আইডি। টেলিগ্রাম বট থেকে আবার চেষ্টা করুন।', false));
-    }
-
-    // ক্লায়েন্টের আসল IP অ্যাড্রেস রিড করা
-    const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '';
-    const clientIp = rawIp.split(',')[0].trim();
-    const ipKey = clientIp.replace(/[\.\:\s]/g, '_');
-
-    let user = await getUser(uid);
-    if (!user) {
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.status(404).send(renderHtmlPage('❌ User Not Found', 'বটে ইউজার পাওয়া যায়নি। টেলিগ্রামে /start লিখে আবার চেষ্টা করুন।', false));
-    }
-
-    if (user.is_verified) {
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.status(200).send(renderHtmlPage('✅ Already Verified!', 'আপনার অ্যাকাউন্ট ইতোমধ্যে ভেরিফাই করা আছে। টেলিগ্রাম বটে ফিরে যান।', true));
-    }
-
-    // ১. চ্যানেল মেম্বারশিপ চেক
-    const joinedAll = await isUserJoinedAllChannels(uid);
-    if (!joinedAll) {
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.status(200).send(renderHtmlPage('⚠️ চ্যানেল জয়েন বাকি আছে!', 'আপনি এখনো সব Required Channel-এ জয়েন করেননি। আগে সব চ্যানেলে জয়েন করুন।', false));
-    }
-
-    // ২. ফায়ারবেসে একই IP দিয়ে আগে অন্য কেউ একাউন্ট করেছে কিনা চেক
-    const existingIpRecord = await firebaseRequest(`used_ips/${ipKey}`);
-    if (existingIpRecord && String(existingIpRecord.user_id) !== uid) {
-        await sendMessage(uid, "❌ <b>ডিভাইস ভেরিফিকেশন ব্যর্থ!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার ডিভাইস বা ওয়াইফাই (IP) থেকে ইতোমধ্যে অন্য একটি অ্যাকাউন্ট ভেরিফাই করা হয়েছে।\n\n⚠️ একই ডিভাইস থেকে একাধিক অ্যাকাউন্ট খোলা সম্পূর্ণ নিষিদ্ধ।");
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.status(403).send(renderHtmlPage('❌ মাল্টিপল অ্যাকাউন্ট নিষিদ্ধ!', 'আপনার ডিভাইস বা ওয়াইফাই নেটওয়ার্ক থেকে ইতোমধ্যে একটি অ্যাকাউন্ট ভেরিফাই করা আছে।', false));
-    }
-
-    // ৩. নতুন IP রেজিস্টার ও ইউজার ভেরিফিকেশন সফল করা
-    const now = Math.floor(Date.now() / 1000);
-    await firebaseRequest(`used_ips/${ipKey}`, 'PUT', {
-        user_id: uid,
-        ip: clientIp,
-        verified_at: now
-    });
-
-    const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
-    await updateUser(uid, {
-        is_verified: true,
-        device_ip: clientIp,
-        balance: Number(user.balance || 0) + welcomeBonus,
-        welcome_claimed: true,
-        verified_at: now
-    });
-
-    // ৪. রেফারারকে রিওয়ার্ড দেওয়া (যদি রেফারেল দিয়ে জয়েন করে থাকে)
-    if (user.referred_by && !user.referral_rewarded) {
-        const ref = await getUser(user.referred_by);
-        if (ref) {
-            const refBonus = Number(await getSetting('referral_bonus', 0));
-            await updateUser(user.referred_by, {
-                balance: Number(ref.balance || 0) + refBonus,
-                total_referrals: Number(ref.total_referrals || 0) + 1
-            });
-            await updateUser(uid, { referral_rewarded: true });
-            await sendMessage(user.referred_by, `🎉 <b>New Referral Verified!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার রেফারেলে যুক্ত হওয়া নতুন ইউজার ডিভাইস ভেরিফিকেশন সম্পন্ন করেছে!\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>\n👥 Total Referrals: <b>${Number(ref.total_referrals || 0) + 1}</b>`);
-        }
-    }
-
-    // টেলিগ্রামে কনফার্মেশন মেসেজ
-    await sendMessage(uid, "🎉 <b>ডিভাইস ভেরিফিকেশন সফল হয়েছে!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার ডিভাইস IP সফলভাবে ভেরিফাই করা হয়েছে। এখন আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন। ⭐", await getUserMenu(uid));
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(renderHtmlPage('🎉 Verification Successful!', 'আপনার ডিভাইস সফলভাবে ভেরিফাই হয়েছে! এখন টেলিগ্রাম বটে ফিরে যান।', true));
-}
-
-function renderHtmlPage(title, message, isSuccess) {
-    const icon = isSuccess ? '✅' : '❌';
-    const color = isSuccess ? '#10B981' : '#EF4444';
-    return `<!DOCTYPE html>
-<html lang="bn">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0F172A; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 15px; }
-        .card { background: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 30px 20px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        .icon { font-size: 55px; margin-bottom: 15px; }
-        h2 { color: ${color}; margin-top: 0; font-size: 22px; }
-        p { color: #94A3B8; font-size: 15px; line-height: 1.6; margin-bottom: 25px; }
-        .btn { display: inline-block; background: #2563EB; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 10px; font-weight: bold; font-size: 16px; transition: 0.2s; }
-        .btn:hover { background: #1D4ED8; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="icon">${icon}</div>
-        <h2>${title}</h2>
-        <p>${message}</p>
-        <a href="https://t.me/${BOT_USERNAME}" class="btn">🚀 Open Telegram Bot</a>
-    </div>
-</body>
-</html>`;
-}
-
-/*
-|--------------------------------------------------------------------------
 | MAIN LOGIC HANDLER
 |--------------------------------------------------------------------------
 */
@@ -675,6 +595,54 @@ async function handleUpdate(update) {
         const data = callback.data || '';
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
+
+        // VERIFY JOINING (🎁 JOINED NOW বাটনে চাপলে)
+        if (data === 'verify_join') {
+            const user = await getUser(fromId);
+            const joinedAll = await isUserJoinedAllChannels(fromId);
+            if (!joinedAll) {
+                await answerCallback(callback.id, '❌ আপনি এখনো সব Required Channel-এ Join করেননি!', true);
+                return;
+            }
+
+            if (user && !user.is_verified) {
+                const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
+                await updateUser(fromId, {
+                    is_verified: true,
+                    balance: Number(user.balance || 0) + welcomeBonus,
+                    welcome_claimed: true,
+                    verified_at: Math.floor(Date.now() / 1000)
+                });
+
+                // রেফারেল চেক: শুধুমাত্র সফল ভেরিফিকেশনে রেফারার বোনাস পাবে
+                if (user.referred_by && !user.referral_rewarded) {
+                    const ref = await getUser(user.referred_by);
+                    if (ref) {
+                        const refBonus = Number(await getSetting('referral_bonus', 0));
+                        await updateUser(user.referred_by, {
+                            balance: Number(ref.balance || 0) + refBonus,
+                            total_referrals: Number(ref.total_referrals || 0) + 1
+                        });
+                        await updateUser(fromId, { referral_rewarded: true });
+                        await sendMessage(user.referred_by, `🎉 <b>New Referral Verified!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার রেফারেল লিংক দিয়ে যুক্ত হওয়া একজন নতুন ইউজার ভেরিফিকেশন সম্পন্ন করেছে!\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>\n👥 Total Referrals: <b>${Number(ref.total_referrals || 0) + 1}</b>`);
+                    }
+                }
+            }
+
+            await answerCallback(callback.id, '🎉 Verification Successful!');
+            
+            // মার্জিত ও সুন্দর স্বাগতম বার্তা
+            const name = escapeHtml(callback.from.first_name || 'ইউজার');
+            const politeWelcomeText = 
+                `✨ <b>স্বাগতম, ${name}!</b> ✨\n` +
+                `━━━━━━━━━━━━━━━━━━\n\n` +
+                `🎉 <b>আপনার ভেরিফিকেশন সফলভাবে সম্পন্ন হয়েছে!</b>\n\n` +
+                `আমাদের <b>Star Earning Bot</b>-এ আপনাকে আন্তরিক স্বাগতম। এখন থেকে আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন এবং বন্ধুদের রেফার করে সহজেই STAR পয়েন্ট উপার্জন করতে পারবেন। ⭐\n\n` +
+                `🌟 <i>যেকোনো সুবিধা পেতে নিচের মেনু অপশনগুলো ব্যবহার করুন। আপনার পথচলা সুন্দর ও আনন্দদায়ক হোক!</i>`;
+
+            await sendMessage(fromId, politeWelcomeText, await getUserMenu(fromId));
+            return;
+        }
 
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
@@ -737,13 +705,13 @@ async function handleUpdate(update) {
             if (data === 'admin_add' && isSuperAdmin(fromId)) {
                 await setAdminState(fromId, 'add_admin');
                 await answerCallback(callback.id, 'Admin ID পাঠান');
-                await sendMessage(fromId, "➕ <b>নতুন এডমিন যোগ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nযে Telegram User ID-কে Admin করতে চান সেটি পাঠান।", getCancelKeyboard());
+                await sendMessage(fromId, "➕ <b>নতুন এডমিন যোগ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nযে Telegram User ID-কে Admin করতে চান সেটি পাঠান:", getCancelKeyboard());
                 return;
             }
             if (data === 'admin_remove' && isSuperAdmin(fromId)) {
                 await setAdminState(fromId, 'remove_admin');
                 await answerCallback(callback.id, 'Admin ID পাঠান');
-                await sendMessage(fromId, "➖ <b>এডমিন রিমুভ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nযে Admin-কে Remove করতে চান তার Telegram ID পাঠান।", getCancelKeyboard());
+                await sendMessage(fromId, "➖ <b>এডমিন রিমুভ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nযে Admin-কে Remove করতে চান তার Telegram ID পাঠান:", getCancelKeyboard());
                 return;
             }
             if (data === 'admin_list' && isSuperAdmin(fromId)) {
@@ -795,51 +763,56 @@ async function handleUpdate(update) {
                 await sendLongMessage(fromId, list);
                 return;
             }
+            
+            // ব্যালেন্স অ্যাড: ধাপ ১
             if (data === 'balance_add') {
-                await setAdminState(fromId, 'add_balance');
-                await answerCallback(callback.id, 'Send details');
-                await sendMessage(fromId, "➕ <b>ইউজারের ব্যালেন্স যোগ করুন</b>\n\nFormat:\n<code>USER_ID - AMOUNT</code>\n\nউদাহরণ:\n<code>123456789 - 5</code>", getCancelKeyboard());
+                await setAdminState(fromId, 'add_balance_user');
+                await answerCallback(callback.id, 'User ID পাঠান');
+                await sendMessage(fromId, "➕ <b>ব্যালেন্স যোগ করুন (ধাপ ১/২)</b>\n━━━━━━━━━━━━━━━━━━\n\n👤 যে ইউজারের ব্যালেন্স যোগ করতে চান, তার <b>Telegram User ID</b> পাঠান:", getCancelKeyboard());
                 return;
             }
+            
+            // ব্যালেন্স কাট: ধাপ ১
             if (data === 'balance_cut') {
-                await setAdminState(fromId, 'cut_balance');
-                await answerCallback(callback.id, 'Send details');
-                await sendMessage(fromId, "➖ <b>ইউজারের ব্যালেন্স কাটুন</b>\n\nFormat:\n<code>USER_ID - AMOUNT</code>", getCancelKeyboard());
+                await setAdminState(fromId, 'cut_balance_user');
+                await answerCallback(callback.id, 'User ID পাঠান');
+                await sendMessage(fromId, "➖ <b>ব্যালেন্স কাটুন (ধাপ ১/২)</b>\n━━━━━━━━━━━━━━━━━━\n\n👤 যে ইউজারের ব্যালেন্স কাটতে চান, তার <b>Telegram User ID</b> পাঠান:", getCancelKeyboard());
                 return;
             }
+
             if (data === 'bonus_welcome') {
                 await setAdminState(fromId, 'welcome_bonus');
                 await answerCallback(callback.id, 'Send amount');
                 const cur = Number(await getSetting('welcome_bonus', 0));
-                await sendMessage(fromId, `🎁 <b>ওয়েলকাম বোনাস সেট করুন</b>\n\nবর্তমান Bonus: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান।`, getCancelKeyboard());
+                await sendMessage(fromId, `🎁 <b>ওয়েলকাম বোনাস সেট করুন</b>\n\nবর্তমান Bonus: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'bonus_referral') {
                 await setAdminState(fromId, 'referral_bonus');
                 await answerCallback(callback.id, 'Send amount');
                 const cur = Number(await getSetting('referral_bonus', 0));
-                await sendMessage(fromId, `👥 <b>রেফারেল বোনাস সেট করুন</b>\n\nবর্তমান Bonus: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান।`, getCancelKeyboard());
+                await sendMessage(fromId, `👥 <b>রেফারেল বোনাস সেট করুন</b>\n\nবর্তমান Bonus: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'withdraw_minimum') {
                 await setAdminState(fromId, 'minimum_withdraw');
                 await answerCallback(callback.id, 'Send amount');
                 const cur = Number(await getSetting('min_withdraw', 1));
-                await sendMessage(fromId, `💸 <b>মিনিমাম উইথড্র সেট করুন</b>\n\nবর্তমান Minimum: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Minimum Amount পাঠান।`, getCancelKeyboard());
+                await sendMessage(fromId, `💸 <b>মিনিমাম উইথড্র সেট করুন</b>\n\nবর্তমান Minimum: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Minimum Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'withdraw_maximum') {
                 await setAdminState(fromId, 'maximum_withdraw');
                 await answerCallback(callback.id, 'Send amount');
                 const cur = await getSetting('max_withdraw', null);
-                await sendMessage(fromId, `💸 <b>সর্বোচ্চ উইথড্র সেট করুন</b>\n\nবর্তমান Maximum: <b>${cur === null ? 'Unlimited' : formatNumber(Number(cur))} ⭐</b>\n\nনতুন Maximum Amount পাঠান।`, getCancelKeyboard());
+                await sendMessage(fromId, `💸 <b>সর্বোচ্চ উইথড্র সেট করুন</b>\n\nবর্তমান Maximum: <b>${cur === null ? 'Unlimited' : formatNumber(Number(cur))} ⭐</b>\n\nনতুন Maximum Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'withdraw_fee') {
                 await setAdminState(fromId, 'withdraw_fee');
                 await answerCallback(callback.id, 'Send fee');
                 const cur = Number(await getSetting('withdraw_fee_percent', 0));
-                await sendMessage(fromId, `📊 <b>উইথড্র ফি সেট করুন</b>\n\nবর্তমান Fee: <b>${formatNumber(cur)}%</b>\n\n0 থেকে 100 এর মধ্যে Percentage পাঠান।`, getCancelKeyboard());
+                await sendMessage(fromId, `📊 <b>উইথড্র ফি সেট করুন</b>\n\nবর্তমান Fee: <b>${formatNumber(cur)}%</b>\n\n0 থেকে 100 এর মধ্যে Percentage পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'payment_channel_set') {
@@ -924,7 +897,7 @@ async function handleUpdate(update) {
                         await clearAdminState(fromId);
                         await sendMessage(chatId, "🎉 <b>Admin Added Successfully!</b>", getAdminMenu(true));
                     } else {
-                        await sendMessage(chatId, "❌ সঠিক Numeric Telegram ID পাঠান।", getCancelKeyboard());
+                        await sendMessage(chatId, "❌ সঠিক Numeric Telegram ID পাঠান:", getCancelKeyboard());
                     }
                     return;
                 }
@@ -935,7 +908,7 @@ async function handleUpdate(update) {
                         await clearAdminState(fromId);
                         await sendMessage(chatId, "✅ <b>Admin Removed Successfully!</b>", getAdminMenu(true));
                     } else {
-                        await sendMessage(chatId, "❌ সঠিক ID পাঠান (Super Admin রিমুভ করা যাবে না)।", getCancelKeyboard());
+                        await sendMessage(chatId, "❌ সঠিক ID পাঠান (Super Admin রিমুভ করা যাবে না):", getCancelKeyboard());
                     }
                     return;
                 }
@@ -945,7 +918,7 @@ async function handleUpdate(update) {
                         await setAdminState(fromId, 'add_force_channel_link', { channel_id: text });
                         await sendMessage(chatId, "🔗 <b>এখন Channel Link অথবা Username দিন:</b>\n\nউদাহরণ: <code>https://t.me/example</code>", getCancelKeyboard());
                     } else {
-                        await sendMessage(chatId, "❌ সঠিক Channel ID দিন (যেমন: <code>-1001234567890</code>)", getCancelKeyboard());
+                        await sendMessage(chatId, "❌ সঠিক Channel ID দিন (যেমন: <code>-1001234567890</code>):", getCancelKeyboard());
                     }
                     return;
                 }
@@ -971,21 +944,109 @@ async function handleUpdate(update) {
                     return;
                 }
 
-                if (action === 'add_balance' || action === 'cut_balance') {
-                    const parts = text.split('|').map(s => s.trim());
-                    if (parts.length === 2 && /^\d+$/.test(parts[0]) && isNumericAmount(parts[1])) {
-                        const target = await getUser(parts[0]);
-                        if (target) {
-                            const cur = Number(target.balance || 0);
-                            const amt = Number(parts[1]);
-                            const newBal = action === 'add_balance' ? (cur + amt) : Math.max(0, cur - amt);
-                            await updateUser(parts[0], { balance: newBal });
-                            await clearAdminState(fromId);
-                            await sendMessage(chatId, `✅ <b>Balance Updated! New Balance: ${formatNumber(newBal)} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
-                            return;
-                        }
+                // ব্যালেন্স অ্যাড: ধাপ ১
+                if (action === 'add_balance_user') {
+                    if (!/^\d+$/.test(text)) {
+                        await sendMessage(chatId, "❌ <b>সঠিক Numeric Telegram User ID পাঠান:</b>", getCancelKeyboard());
+                        return;
                     }
-                    await sendMessage(chatId, "❌ Format: <code>USER_ID | AMOUNT</code>", getCancelKeyboard());
+                    const targetUser = await getUser(text);
+                    if (!targetUser) {
+                        await sendMessage(chatId, "❌ <b>ইউজার পাওয়া যায়নি!</b>\n\nদয়া করে সঠিক User ID পাঠান:", getCancelKeyboard());
+                        return;
+                    }
+                    await setAdminState(fromId, 'add_balance_amount', {
+                        target_id: text,
+                        target_name: targetUser.first_name || 'User',
+                        current_bal: Number(targetUser.balance || 0)
+                    });
+                    await sendMessage(chatId, 
+                        `👤 <b>ইউজার পাওয়া গেছে!</b>\n━━━━━━━━━━━━━━━━━━\n` +
+                        `• নাম: <b>${escapeHtml(targetUser.first_name || 'User')}</b>\n` +
+                        `• আইডি: <code>${text}</code>\n` +
+                        `• বর্তমান ব্যালেন্স: <b>${formatNumber(Number(targetUser.balance || 0))} ⭐</b>\n\n` +
+                        `💰 <b>(ধাপ ২/২) কত STAR যোগ করতে চান সেই Amount লিখুন:</b>`, 
+                        getCancelKeyboard()
+                    );
+                    return;
+                }
+
+                // ব্যালেন্স অ্যাড: ধাপ ২
+                if (action === 'add_balance_amount') {
+                    if (!isNumericAmount(text) || Number(text) <= 0) {
+                        await sendMessage(chatId, "❌ <b>সঠিক Amount লিখুন (০ এর বেশি হতে হবে):</b>", getCancelKeyboard());
+                        return;
+                    }
+                    const amt = Number(text);
+                    const targetId = aState.target_id;
+                    const targetUser = await getUser(targetId);
+                    if (targetUser) {
+                        const newBal = Number(targetUser.balance || 0) + amt;
+                        await updateUser(targetId, { balance: newBal });
+                        await clearAdminState(fromId);
+                        await sendMessage(chatId, 
+                            `✅ <b>ব্যালেন্স সফলভাবে যোগ করা হয়েছে!</b>\n━━━━━━━━━━━━━━━━━━\n` +
+                            `👤 ইউজার: <b>${escapeHtml(aState.target_name)}</b> (<code>${targetId}</code>)\n` +
+                            `➕ যোগ করা হয়েছে: <b>+${formatNumber(amt)} ⭐</b>\n` +
+                            `💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} ⭐</b>`,
+                            getAdminMenu(isSuperAdmin(fromId))
+                        );
+                        try {
+                            await sendMessage(targetId, `🎁 <b>আপনার অ্যাকাউন্টে +${formatNumber(amt)} STAR যোগ করা হয়েছে!</b>\n💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} STAR ⭐</b>`);
+                        } catch {}
+                    }
+                    return;
+                }
+
+                // ব্যালেন্স কাট: ধাপ ১
+                if (action === 'cut_balance_user') {
+                    if (!/^\d+$/.test(text)) {
+                        await sendMessage(chatId, "❌ <b>সঠিক Numeric Telegram User ID পাঠান:</b>", getCancelKeyboard());
+                        return;
+                    }
+                    const targetUser = await getUser(text);
+                    if (!targetUser) {
+                        await sendMessage(chatId, "❌ <b>ইউজার পাওয়া যায়নি!</b>\n\nদয়া করে সঠিক User ID পাঠান:", getCancelKeyboard());
+                        return;
+                    }
+                    await setAdminState(fromId, 'cut_balance_amount', {
+                        target_id: text,
+                        target_name: targetUser.first_name || 'User',
+                        current_bal: Number(targetUser.balance || 0)
+                    });
+                    await sendMessage(chatId, 
+                        `👤 <b>ইউজার পাওয়া গেছে!</b>\n━━━━━━━━━━━━━━━━━━\n` +
+                        `• নাম: <b>${escapeHtml(targetUser.first_name || 'User')}</b>\n` +
+                        `• আইডি: <code>${text}</code>\n` +
+                        `• বর্তমান ব্যালেন্স: <b>${formatNumber(Number(targetUser.balance || 0))} ⭐</b>\n\n` +
+                        `➖ <b>(ধাপ ২/২) কত STAR কাটতে চান সেই Amount লিখুন:</b>`, 
+                        getCancelKeyboard()
+                    );
+                    return;
+                }
+
+                // ব্যালেন্স কাট: ধাপ ২
+                if (action === 'cut_balance_amount') {
+                    if (!isNumericAmount(text) || Number(text) <= 0) {
+                        await sendMessage(chatId, "❌ <b>সঠিক Amount লিখুন:</b>", getCancelKeyboard());
+                        return;
+                    }
+                    const amt = Number(text);
+                    const targetId = aState.target_id;
+                    const targetUser = await getUser(targetId);
+                    if (targetUser) {
+                        const cur = Number(targetUser.balance || 0);
+                        const newBal = Math.max(0, cur - amt);
+                        await updateUser(targetId, { balance: newBal });
+                        await clearAdminState(fromId);
+                        await sendMessage(chatId, 
+                            `✅ <b>ব্যালেন্স সফলভাবে কাটা হয়েছে!</b>\n━━━━━━━━━━━━━━━━━━\n` +
+                            `👤 ইউজার: <b>${escapeHtml(aState.target_name)}</b> (<code>${targetId}</code>)\n` +
+                            `➖ কাটা হয়েছে: <b>-${formatNumber(amt)} ⭐</b>\n` +
+                            `💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} ⭐</b>`,
+                            getAdminMenu(isSuperAdmin(fromId))
+                        );
+                    }
                     return;
                 }
 
@@ -1146,7 +1207,12 @@ async function handleUpdate(update) {
                 await showForceJoin(chatId);
                 return;
             }
-            await sendMessage(chatId, `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━\nআমাদের বটের সকল সুবিধা উপভোগ করুন।`, isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
+            
+            const politeStartText = isAdm 
+                ? `👋 <b>স্বাগতম, ${escapeHtml(msg.from.first_name || 'Admin')}!</b>\n━━━━━━━━━━━━━━━━━━\nআপনার জন্য অ্যাডমিন কন্ট্রোল প্যানেল প্রস্তুত রয়েছে।`
+                : `🌟 <b>স্বাগতম, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━\nআমাদের <b>Star Earning Bot</b>-এ আপনাকে স্বাগতম। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশন নির্বাচন করুন।`;
+
+            await sendMessage(chatId, politeStartText, isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
             return;
         }
 
@@ -1166,7 +1232,7 @@ async function handleUpdate(update) {
 
         if (text === '👤 My Account') {
             const u = await getUser(fromId);
-            await sendMessage(chatId, `👤 <b>MY ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━\n\n🆔 ID: <code>${fromId}</code>\n⭐ Balance: <b>${formatNumber(u?.balance || 0)} STAR</b>\n👥 Referrals: <b>${u?.total_referrals || 0}</b>`);
+            await sendMessage(chatId, `👤 <b>MY ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━\n\n👤 Name: <b>${escapeHtml(msg.from.first_name || 'User')}</b>\n🆔 ID: <code>${fromId}</code>\n⭐ Balance: <b>${formatNumber(u?.balance || 0)} STAR</b>\n👥 Referrals: <b>${u?.total_referrals || 0}</b>`);
             return;
         }
 
@@ -1227,7 +1293,7 @@ async function handleUpdate(update) {
                 return;
             }
             if (text === '👥 User & Balance Management') {
-                await sendMessage(chatId, "👥 <b>User & Balance Management</b>", balanceKeyboard());
+                await sendMessage(chatId, "👥 <b>User & Balance Management</b>\n━━━━━━━━━━━━━━━━━━\nনিচের অপশন থেকে ইউজারের ব্যালেন্স নিয়ন্ত্রণ করুন:", balanceKeyboard());
                 return;
             }
             if (text === '📢 Channel Settings') {
@@ -1275,16 +1341,10 @@ async function handleUpdate(update) {
 
 /*
 |--------------------------------------------------------------------------
-| VERCEL SERVERLESS EXPORT (ROUTER)
+| VERCEL SERVERLESS EXPORT
 |--------------------------------------------------------------------------
 */
 module.exports = async (req, res) => {
-    // ১. ডিভাইস IP ভেরিফিকেশন ওয়েব রিকোয়েস্ট (GET)
-    if (req.method === 'GET' && req.query.action === 'verify_ip') {
-        return await handleDeviceIpVerification(req, res);
-    }
-
-    // ২. টেলিগ্রাম বট মেসেজ ওয়েবহুক (POST)
     if (req.method === 'POST') {
         try {
             const update = req.body || {};
@@ -1294,6 +1354,5 @@ module.exports = async (req, res) => {
         }
         return res.status(200).send('OK');
     }
-
-    return res.status(200).send('Bot is running on Vercel with Device IP Verification 🛡️');
+    return res.status(200).send('Bot is running on Vercel ⚡');
 };
