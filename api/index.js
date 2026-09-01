@@ -1,6 +1,6 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (SERVERLESS 24/7)
+| STAR EARNING BOT FOR VERCEL (FULL VERSION 100% WORKING)
 |--------------------------------------------------------------------------
 */
 
@@ -18,7 +18,7 @@ const FIREBASE_AUTH_UID = 'WUVFzcS2jvXDXgGfUAQPl9ESl943';
 
 /*
 |--------------------------------------------------------------------------
-| BASIC HELPERS
+| HELPERS
 |--------------------------------------------------------------------------
 */
 function escapeHtml(text) {
@@ -121,7 +121,7 @@ async function firebaseRequest(path, method = 'GET', data = null) {
 
 /*
 |--------------------------------------------------------------------------
-| FIREBASE DATA HELPERS
+| FIREBASE DATA METHODS
 |--------------------------------------------------------------------------
 */
 async function getUser(userId) {
@@ -220,9 +220,19 @@ async function getUserWithdrawals(userId) {
     return result.slice(0, 10);
 }
 
+async function getUserWithdrawalCount(userId) {
+    const all = await firebaseRequest('withdrawals');
+    if (!all || typeof all !== 'object') return 0;
+    let count = 0;
+    for (const item of Object.values(all)) {
+        if (item && String(item.user_id) === String(userId)) count++;
+    }
+    return count;
+}
+
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM API HELPERS
+| TELEGRAM API
 |--------------------------------------------------------------------------
 */
 async function telegramApi(method, params = {}) {
@@ -269,6 +279,19 @@ async function answerCallback(callbackId, text = '', alert = false) {
         text: text,
         show_alert: alert
     });
+}
+
+async function sendLongMessage(chatId, text, extra = null) {
+    const max = 3800;
+    if (text.length <= max) {
+        return await sendMessage(chatId, text, extra);
+    }
+    let offset = 0;
+    while (offset < text.length) {
+        let chunk = text.slice(offset, offset + max);
+        offset += chunk.length;
+        await sendMessage(chatId, chunk, offset >= text.length ? extra : null);
+    }
 }
 
 /*
@@ -322,7 +345,7 @@ async function isAdmin(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| MENUS & KEYBOARDS
+| KEYBOARDS
 |--------------------------------------------------------------------------
 */
 async function getUserMenu(userId) {
@@ -350,6 +373,75 @@ function getAdminMenu(superAdmin) {
 
 function getCancelKeyboard() {
     return { keyboard: [[{ text: '/cancel' }]], resize_keyboard: true, one_time_keyboard: true };
+}
+
+function adminManagementKeyboard() {
+    return {
+        inline_keyboard: [
+            [
+                { text: '➕ এডমিন যোগ করুন', callback_data: 'admin_add' },
+                { text: '➖ এডমিন রিমুভ করুন', callback_data: 'admin_remove' }
+            ],
+            [{ text: '👮 এডমিন তালিকা', callback_data: 'admin_list' }]
+        ]
+    };
+}
+
+function forceJoinKeyboard() {
+    return {
+        inline_keyboard: [
+            [
+                { text: '➕ চ্যানেল যোগ করুন', callback_data: 'force_add' },
+                { text: '➖ চ্যানেল রিমুভ করুন', callback_data: 'force_remove' }
+            ],
+            [{ text: '📋 চ্যানেল তালিকা', callback_data: 'force_list' }]
+        ]
+    };
+}
+
+function balanceKeyboard() {
+    return {
+        inline_keyboard: [
+            [
+                { text: '➕ ব্যালেন্স যোগ করুন', callback_data: 'balance_add' },
+                { text: '➖ ব্যালেন্স কাটুন', callback_data: 'balance_cut' }
+            ]
+        ]
+    };
+}
+
+function bonusKeyboard() {
+    return {
+        inline_keyboard: [
+            [{ text: '🎁 ওয়েলকাম বোনাস', callback_data: 'bonus_welcome' }],
+            [{ text: '👥 রেফারেল বোনাস', callback_data: 'bonus_referral' }]
+        ]
+    };
+}
+
+function withdrawSettingsKeyboard() {
+    return {
+        inline_keyboard: [
+            [
+                { text: '💰 মিনিমাম উইথড্র', callback_data: 'withdraw_minimum' },
+                { text: '💰 সর্বোচ্চ উইথড্র', callback_data: 'withdraw_maximum' }
+            ],
+            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee' }],
+            [{ text: '📢 Payment/Verification Channel', callback_data: 'payment_channel_set' }],
+            [{ text: '💸 Withdraw Request Channel', callback_data: 'withdraw_request_channel_set' }]
+        ]
+    };
+}
+
+function giftKeyboard() {
+    return {
+        inline_keyboard: [
+            [
+                { text: '➕ নতুন Gift Code', callback_data: 'gift_create' },
+                { text: '📋 Gift Code তালিকা', callback_data: 'gift_list' }
+            ]
+        ]
+    };
 }
 
 function withdrawActionKeyboard(withdrawId) {
@@ -559,6 +651,151 @@ async function handleUpdate(update) {
                 return;
             }
         }
+
+        // ADMIN CALLBACK ACTIONS
+        if (await isAdmin(fromId)) {
+            if (data === 'admin_add' && isSuperAdmin(fromId)) {
+                await setAdminState(fromId, 'add_admin');
+                await answerCallback(callback.id, 'Admin ID পাঠান');
+                await sendMessage(fromId, "➕ <b>নতুন এডমিন যোগ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nযে Telegram User ID-কে Admin করতে চান সেটি পাঠান।", getCancelKeyboard());
+                return;
+            }
+            if (data === 'admin_remove' && isSuperAdmin(fromId)) {
+                await setAdminState(fromId, 'remove_admin');
+                await answerCallback(callback.id, 'Admin ID পাঠান');
+                await sendMessage(fromId, "➖ <b>এডমিন রিমুভ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nযে Admin-কে Remove করতে চান তার Telegram ID পাঠান।", getCancelKeyboard());
+                return;
+            }
+            if (data === 'admin_list' && isSuperAdmin(fromId)) {
+                const admins = await getAllAdmins();
+                let list = `👮 <b>এডমিন তালিকা</b>\n━━━━━━━━━━━━━━━━━━\n\n👑 <b>Super Admin</b>\n🆔 <code>${SUPER_ADMIN_ID}</code>\n\n👮 <b>অন্যান্য Admin</b>\n`;
+                let has = false;
+                for (const [aId, a] of Object.entries(admins)) {
+                    if (a && a.active) { has = true; list += `\n• <code>${escapeHtml(aId)}</code>`; }
+                }
+                if (!has) list += "\nকোনো অতিরিক্ত Admin নেই।";
+                await answerCallback(callback.id, 'Loaded');
+                await sendMessage(fromId, list);
+                return;
+            }
+            if (data === 'force_add') {
+                await setAdminState(fromId, 'add_force_channel_id');
+                await answerCallback(callback.id, 'Channel ID পাঠান');
+                await sendMessage(fromId, "➕ <b>ফোর্স জয়েন চ্যানেল যোগ করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nপ্রথমে Channel / Group ID পাঠান।\n\n<b>উদাহরণ:</b>\n<code>-1001234567890</code>\n\n⚠️ নিশ্চিত করুন Bot ওই Channel/Group-এ Admin আছে।", getCancelKeyboard());
+                return;
+            }
+            if (data === 'force_remove') {
+                const channels = await getAllForceChannels();
+                if (!Object.keys(channels).length) { await answerCallback(callback.id, 'কোনো Channel নেই!'); return; }
+                const kb = [];
+                for (const [k, c] of Object.entries(channels)) {
+                    if (c) kb.push([{ text: `❌ ${c.channel_name || 'Unknown'}`, callback_data: `removeforce_${k}` }]);
+                }
+                await answerCallback(callback.id, 'Select');
+                await sendMessage(fromId, "📢 <b>ফোর্স জয়েন চ্যানেল রিমুভ</b>\n\nনিচের তালিকা থেকে Channel নির্বাচন করুন:", { inline_keyboard: kb });
+                return;
+            }
+            const removeMatch = data.match(/^removeforce_([A-Za-z0-9_-]+)$/);
+            if (removeMatch) {
+                await firebaseRequest(`force_channels/${removeMatch[1]}`, 'DELETE');
+                await answerCallback(callback.id, 'Removed');
+                await sendMessage(fromId, "✅ <b>চ্যানেল সফলভাবে রিমুভ করা হয়েছে!</b>", getAdminMenu(isSuperAdmin(fromId)));
+                return;
+            }
+            if (data === 'force_list') {
+                const channels = await getAllForceChannels();
+                let list = "📢 <b>ফোর্স জয়েন চ্যানেল তালিকা</b>\n━━━━━━━━━━━━━━━━━━\n";
+                if (!Object.keys(channels).length) list += "\nকোনো Force Join Channel নেই।";
+                else {
+                    for (const [k, c] of Object.entries(channels)) {
+                        if (c) list += `\n\n🔹 <b>${escapeHtml(c.channel_name || '')}</b>\n🆔 ID: <code>${escapeHtml(c.channel_id || '')}</code>\n🔗 Link: <code>${escapeHtml(c.channel_link || '')}</code>`;
+                    }
+                }
+                await answerCallback(callback.id, 'Loaded');
+                await sendLongMessage(fromId, list);
+                return;
+            }
+            if (data === 'balance_add') {
+                await setAdminState(fromId, 'add_balance');
+                await answerCallback(callback.id, 'Send details');
+                await sendMessage(fromId, "➕ <b>ইউজারের ব্যালেন্স যোগ করুন</b>\n\nFormat:\n<code>USER_ID | AMOUNT</code>\n\nউদাহরণ:\n<code>123456789 | 5</code>", getCancelKeyboard());
+                return;
+            }
+            if (data === 'balance_cut') {
+                await setAdminState(fromId, 'cut_balance');
+                await answerCallback(callback.id, 'Send details');
+                await sendMessage(fromId, "➖ <b>ইউজারের ব্যালেন্স কাটুন</b>\n\nFormat:\n<code>USER_ID | AMOUNT</code>", getCancelKeyboard());
+                return;
+            }
+            if (data === 'bonus_welcome') {
+                await setAdminState(fromId, 'welcome_bonus');
+                await answerCallback(callback.id, 'Send amount');
+                const cur = Number(await getSetting('welcome_bonus', 0));
+                await sendMessage(fromId, `🎁 <b>ওয়েলকাম বোনাস সেট করুন</b>\n\nবর্তমান Bonus: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান।`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'bonus_referral') {
+                await setAdminState(fromId, 'referral_bonus');
+                await answerCallback(callback.id, 'Send amount');
+                const cur = Number(await getSetting('referral_bonus', 0));
+                await sendMessage(fromId, `👥 <b>রেফারেল বোনাস সেট করুন</b>\n\nবর্তমান Bonus: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান।`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'withdraw_minimum') {
+                await setAdminState(fromId, 'minimum_withdraw');
+                await answerCallback(callback.id, 'Send amount');
+                const cur = Number(await getSetting('min_withdraw', 1));
+                await sendMessage(fromId, `💸 <b>মিনিমাম উইথড্র সেট করুন</b>\n\nবর্তমান Minimum: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Minimum Amount পাঠান।`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'withdraw_maximum') {
+                await setAdminState(fromId, 'maximum_withdraw');
+                await answerCallback(callback.id, 'Send amount');
+                const cur = await getSetting('max_withdraw', null);
+                await sendMessage(fromId, `💸 <b>সর্বোচ্চ উইথড্র সেট করুন</b>\n\nবর্তমান Maximum: <b>${cur === null ? 'Unlimited' : formatNumber(Number(cur))} ⭐</b>\n\nনতুন Maximum Amount পাঠান।`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'withdraw_fee') {
+                await setAdminState(fromId, 'withdraw_fee');
+                await answerCallback(callback.id, 'Send fee');
+                const cur = Number(await getSetting('withdraw_fee_percent', 0));
+                await sendMessage(fromId, `📊 <b>উইথড্র ফি সেট করুন</b>\n\nবর্তমান Fee: <b>${formatNumber(cur)}%</b>\n\n0 থেকে 100 এর মধ্যে Percentage পাঠান।`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'payment_channel_set') {
+                await setAdminState(fromId, 'payment_verification_channel');
+                await answerCallback(callback.id, 'Send channel');
+                const current = await getPaymentVerificationChannel();
+                await sendMessage(fromId, `📢 <b>Payment/Verification Channel</b>\n━━━━━━━━━━━━━━━━━━\n\nFormat:\n<code>@channelusername</code>\nঅথবা\n<code>-1001234567890</code>\n\nবর্তমান:\n<b>${current !== '' ? escapeHtml(current) : 'Not Set'}</b>`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'withdraw_request_channel_set') {
+                await setAdminState(fromId, 'withdraw_request_channel');
+                await answerCallback(callback.id, 'Send channel');
+                const current = await getWithdrawRequestChannel();
+                await sendMessage(fromId, `💸 <b>Withdraw Request Channel</b>\n━━━━━━━━━━━━━━━━━━\n\nFormat:\n<code>@channelusername</code>\nঅথবা\n<code>-1001234567890</code>\n\nবর্তমান:\n<b>${current !== '' ? escapeHtml(current) : 'Not Set'}</b>`, getCancelKeyboard());
+                return;
+            }
+            if (data === 'gift_create') {
+                await setAdminState(fromId, 'gift_code');
+                await answerCallback(callback.id, 'Send details');
+                await sendMessage(fromId, "🎟 <b>নতুন Gift Code তৈরি করুন</b>\n\nFormat:\n<code>CODE | STAR_AMOUNT | MAX_USERS</code>\n\nExample:\n<code>WELCOME50 | 5 | 100</code>", getCancelKeyboard());
+                return;
+            }
+            if (data === 'gift_list') {
+                const codes = (await firebaseRequest('gift_codes')) || {};
+                let out = "🎟 <b>Gift Code তালিকা</b>\n━━━━━━━━━━━━━━━━━━";
+                if (!Object.keys(codes).length) out += "\n\nকোনো Gift Code নেই।";
+                else {
+                    for (const [code, gift] of Object.entries(codes)) {
+                        if (gift) out += `\n\n🎁 <code>${escapeHtml(code)}</code>\n⭐ Reward: <b>${formatNumber(Number(gift.amount || 0))} STAR</b>\n👥 Used: <b>${gift.used_count || 0} / ${gift.max_users || 0}</b>`;
+                    }
+                }
+                await answerCallback(callback.id, 'Loaded');
+                await sendLongMessage(fromId, out);
+                return;
+            }
+        }
     }
 
     if (update.message && update.message.text) {
@@ -586,19 +823,264 @@ async function handleUpdate(update) {
             await setUser(fromId, user);
         }
 
+        // GLOBAL CANCEL
         if (text.toLowerCase() === '/cancel') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
+            await updateUser(fromId, { withdraw_state: null });
             await sendMessage(chatId, "❌ অপারেশন বাতিল করা হয়েছে।", isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
             return;
         }
 
+        // ADMIN STATE INPUTS
+        if (isAdm) {
+            const aState = await getAdminState(fromId);
+            if (aState && aState.action) {
+                const action = aState.action;
+
+                if (action === 'add_admin') {
+                    if (/^\d+$/.test(text)) {
+                        await firebaseRequest(`admins/${text}`, 'PUT', { active: true, added_by: fromId, added_at: Math.floor(Date.now() / 1000) });
+                        await clearAdminState(fromId);
+                        await sendMessage(chatId, "🎉 <b>Admin Added Successfully!</b>", getAdminMenu(true));
+                    } else {
+                        await sendMessage(chatId, "❌ সঠিক Numeric Telegram ID পাঠান।", getCancelKeyboard());
+                    }
+                    return;
+                }
+
+                if (action === 'remove_admin') {
+                    if (/^\d+$/.test(text) && text !== String(SUPER_ADMIN_ID)) {
+                        await firebaseRequest(`admins/${text}`, 'DELETE');
+                        await clearAdminState(fromId);
+                        await sendMessage(chatId, "✅ <b>Admin Removed Successfully!</b>", getAdminMenu(true));
+                    } else {
+                        await sendMessage(chatId, "❌ সঠিক ID পাঠান (Super Admin রিমুভ করা যাবে না)।", getCancelKeyboard());
+                    }
+                    return;
+                }
+
+                if (action === 'add_force_channel_id') {
+                    if (/^-100\d+$/.test(text)) {
+                        await setAdminState(fromId, 'add_force_channel_link', { channel_id: text });
+                        await sendMessage(chatId, "🔗 <b>এখন Channel Link অথবা Username দিন:</b>\n\nউদাহরণ: <code>https://t.me/example</code>", getCancelKeyboard());
+                    } else {
+                        await sendMessage(chatId, "❌ সঠিক Channel ID দিন (যেমন: <code>-1001234567890</code>)", getCancelKeyboard());
+                    }
+                    return;
+                }
+
+                if (action === 'add_force_channel_link') {
+                    let link = text.trim();
+                    if (link.startsWith('@')) link = 'https://t.me/' + link.slice(1);
+                    await setAdminState(fromId, 'add_force_channel_name', { channel_id: aState.channel_id, channel_link: link });
+                    await sendMessage(chatId, "🔘 <b>এখন Button Name দিন:</b>", getCancelKeyboard());
+                    return;
+                }
+
+                if (action === 'add_force_channel_name') {
+                    await firebaseRequest('force_channels', 'POST', {
+                        channel_id: aState.channel_id,
+                        channel_link: aState.channel_link,
+                        channel_name: text,
+                        added_by: fromId,
+                        added_at: Math.floor(Date.now() / 1000)
+                    });
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, "🎉 <b>Force Join Channel Added Successfully!</b>", getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'add_balance' || action === 'cut_balance') {
+                    const parts = text.split('|').map(s => s.trim());
+                    if (parts.length === 2 && /^\d+$/.test(parts[0]) && isNumericAmount(parts[1])) {
+                        const target = await getUser(parts[0]);
+                        if (target) {
+                            const cur = Number(target.balance || 0);
+                            const amt = Number(parts[1]);
+                            const newBal = action === 'add_balance' ? (cur + amt) : Math.max(0, cur - amt);
+                            await updateUser(parts[0], { balance: newBal });
+                            await clearAdminState(fromId);
+                            await sendMessage(chatId, `✅ <b>Balance Updated! New Balance: ${formatNumber(newBal)} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                            return;
+                        }
+                    }
+                    await sendMessage(chatId, "❌ Format: <code>USER_ID | AMOUNT</code>", getCancelKeyboard());
+                    return;
+                }
+
+                if (action === 'welcome_bonus' && isNumericAmount(text)) {
+                    await setSetting('welcome_bonus', Number(text));
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, `🎁 <b>Welcome Bonus Updated: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'referral_bonus' && isNumericAmount(text)) {
+                    await setSetting('referral_bonus', Number(text));
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, `👥 <b>Referral Bonus Updated: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'minimum_withdraw' && isNumericAmount(text)) {
+                    await setSetting('min_withdraw', Number(text));
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, `💸 <b>Minimum Withdrawal Updated: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'maximum_withdraw' && isNumericAmount(text)) {
+                    await setSetting('max_withdraw', Number(text));
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, `💸 <b>Maximum Withdrawal Updated: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'withdraw_fee' && isNumericAmount(text)) {
+                    await setSetting('withdraw_fee_percent', Number(text));
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, `📊 <b>Withdrawal Fee Updated: ${formatNumber(Number(text))}%</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'payment_verification_channel' && isValidChannelTarget(text)) {
+                    await setSetting('payment_verification_channel', text.trim());
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, "✅ <b>Payment/Verification Channel Updated!</b>", getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'withdraw_request_channel' && isValidChannelTarget(text)) {
+                    await setSetting('withdraw_request_channel', text.trim());
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, "✅ <b>Withdraw Request Channel Updated!</b>", getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
+                if (action === 'gift_code') {
+                    const parts = text.split('|').map(s => s.trim());
+                    if (parts.length === 3 && isNumericAmount(parts[1]) && /^\d+$/.test(parts[2])) {
+                        await firebaseRequest(`gift_codes/${parts[0].toUpperCase()}`, 'PUT', {
+                            amount: Number(parts[1]),
+                            max_users: Number(parts[2]),
+                            used_count: 0,
+                            created_by: fromId,
+                            created_at: Math.floor(Date.now() / 1000),
+                            active: true
+                        });
+                        await clearAdminState(fromId);
+                        await sendMessage(chatId, `🎉 <b>Gift Code Created: ${escapeHtml(parts[0].toUpperCase())}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        return;
+                    }
+                    await sendMessage(chatId, "❌ Format: <code>CODE | STAR_AMOUNT | MAX_USERS</code>", getCancelKeyboard());
+                    return;
+                }
+
+                if (action === 'broadcast' && text) {
+                    await clearAdminState(fromId);
+                    const users = await getAllUsers();
+                    let s = 0, f = 0;
+                    for (const uid of Object.keys(users)) {
+                        const r = await sendMessage(uid, text);
+                        if (r && r.ok) s++; else f++;
+                    }
+                    await sendMessage(chatId, `📢 <b>Broadcast Completed!</b>\n\nSent: ${s}, Failed: ${f}`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+            }
+        }
+
+        // USER STATE INPUTS
+        if (!isAdm) {
+            const uState = await getUserState(fromId);
+            if (uState && uState.action === 'withdraw_username') {
+                const target = normalizeTelegramUsernameInput(text);
+                if (!isValidTelegramUsername(target)) {
+                    await sendMessage(chatId, "❌ সঠিক Username দিন: <code>@username</code>", getCancelKeyboard());
+                    return;
+                }
+                const u = await getUser(fromId);
+                const amount = Number(u?.balance || 0);
+                const fee = Number(await getSetting('withdraw_fee_percent', 0));
+                const afterFee = Math.max(0, amount - (amount * fee / 100));
+                const txId = `${fromId}${Math.floor(Date.now() / 1000)}`;
+
+                const reqChannel = await getWithdrawRequestChannel();
+                if (!reqChannel) {
+                    await sendMessage(chatId, "⚠️ Withdraw Channel Configured নেই।");
+                    await clearUserState(fromId);
+                    return;
+                }
+
+                const withdrawData = {
+                    user_id: fromId,
+                    first_name: msg.from.first_name || 'User',
+                    withdraw_username: target,
+                    amount: amount,
+                    fee_percent: fee,
+                    after_fee: afterFee,
+                    transaction_id: txId,
+                    status: 'pending',
+                    created_at: Math.floor(Date.now() / 1000)
+                };
+
+                const created = await firebaseRequest('withdrawals', 'POST', withdrawData);
+                if (created && created.name) {
+                    await updateUser(fromId, { balance: 0 });
+                    await clearUserState(fromId);
+                    await sendMessage(reqChannel, buildWithdrawRequestText(withdrawData, 'pending'), withdrawActionKeyboard(created.name));
+                    await sendMessage(chatId, `🔔 <b>Withdrawal Submitted!</b>\n\nAmount: <b>${formatNumber(amount)} STAR</b>\nAfter Fee: <b>${formatNumber(afterFee)} STAR</b>\nStatus: <b>PENDING ⏳</b>`, await getUserMenu(fromId));
+                }
+                return;
+            }
+
+            if (uState && uState.action === 'gift_redeem') {
+                const code = text.trim().toUpperCase();
+                const gift = await firebaseRequest(`gift_codes/${code}`);
+                if (!gift || !gift.active || Number(gift.used_count || 0) >= Number(gift.max_users || 0)) {
+                    await sendMessage(chatId, "❌ <b>Invalid or Expired Gift Code!</b>", await getUserMenu(fromId));
+                    await clearUserState(fromId);
+                    return;
+                }
+                const claim = await firebaseRequest(`gift_claims/${code}/${fromId}`);
+                if (claim) {
+                    await sendMessage(chatId, "⚠️ <b>You have already used this Gift Code.</b>", await getUserMenu(fromId));
+                    await clearUserState(fromId);
+                    return;
+                }
+                const reward = Number(gift.amount || 0);
+                const u = await getUser(fromId);
+                await updateUser(fromId, { balance: Number(u?.balance || 0) + reward });
+                await firebaseRequest(`gift_claims/${code}/${fromId}`, 'PUT', { claimed_at: Math.floor(Date.now() / 1000), reward: reward });
+                await firebaseRequest(`gift_codes/${code}`, 'PATCH', { used_count: Number(gift.used_count || 0) + 1 });
+                await clearUserState(fromId);
+                await sendMessage(chatId, `🎉 <b>Gift Code Redeemed!</b>\n\n⭐ Reward: <b>+${formatNumber(reward)} STAR</b>`, await getUserMenu(fromId));
+                return;
+            }
+        }
+
+        // TEXT COMMANDS & BUTTONS
         if (text.startsWith('/start')) {
             if (!isAdm && !(await isUserJoinedAllChannels(fromId))) {
                 await showForceJoin(chatId);
                 return;
             }
             await sendMessage(chatId, `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━\nআমাদের বটের সকল সুবিধা উপভোগ করুন।`, isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
+            return;
+        }
+
+        if (text === '🛠 Admin Panel' && isAdm) {
+            await clearAdminState(fromId);
+            await sendMessage(chatId, "🛠 <b>এডমিন কন্ট্রোল প্যানেল</b>\n━━━━━━━━━━━━━━━━━━\nনিচের অপশনগুলো ব্যবহার করুন:", getAdminMenu(isSuperAdmin(fromId)));
+            return;
+        }
+
+        if (text === '🔙 ইউজার প্যানেলে ফিরে যান') {
+            await clearAdminState(fromId);
+            await clearUserState(fromId);
+            await updateUser(fromId, { withdraw_state: null });
+            await sendMessage(chatId, "👤 <b>User Panel Activated</b>", await getUserMenu(fromId));
             return;
         }
 
@@ -628,6 +1110,12 @@ async function handleUpdate(update) {
             return;
         }
 
+        if (text === '🎟 Gift Code' && !isAdm) {
+            await setUserState(fromId, 'gift_redeem');
+            await sendMessage(chatId, "🎟 <b>REDEEM GIFT CODE</b>\n\nআপনার Gift Code পাঠান:", getCancelKeyboard());
+            return;
+        }
+
         if (text === '📜 History') {
             const history = await getUserWithdrawals(fromId);
             if (!history.length) {
@@ -642,46 +1130,56 @@ async function handleUpdate(update) {
             return;
         }
 
-        const userState = await getUserState(fromId);
-        if (userState && userState.action === 'withdraw_username') {
-            const target = normalizeTelegramUsernameInput(text);
-            if (!isValidTelegramUsername(target)) {
-                await sendMessage(chatId, "❌ সঠিক Username দিন: <code>@username</code>");
+        // ADMIN BUTTONS
+        if (isAdm) {
+            if (text === '📊 পরিসংখ্যান') {
+                const users = await getAllUsers();
+                const withdrawals = (await firebaseRequest('withdrawals')) || {};
+                await sendMessage(chatId, `📊 <b>বট পরিসংখ্যান</b>\n\n👥 মোট ইউজার: <b>${Object.keys(users).length}</b>\n💸 মোট Withdrawal: <b>${Object.keys(withdrawals).length}</b>`);
                 return;
             }
-            const u = await getUser(fromId);
-            const amount = Number(u?.balance || 0);
-            const fee = Number(await getSetting('withdraw_fee_percent', 0));
-            const afterFee = Math.max(0, amount - (amount * fee / 100));
-            const txId = `${fromId}${Math.floor(Date.now() / 1000)}`;
-
-            const reqChannel = await getWithdrawRequestChannel();
-            if (!reqChannel) {
-                await sendMessage(chatId, "⚠️ Withdraw Channel Configured নেই।");
-                await clearUserState(fromId);
+            if (text === '👥 User & Balance Management') {
+                await sendMessage(chatId, "👥 <b>User & Balance Management</b>", balanceKeyboard());
                 return;
             }
-
-            const withdrawData = {
-                user_id: fromId,
-                first_name: msg.from.first_name || 'User',
-                withdraw_username: target,
-                amount: amount,
-                fee_percent: fee,
-                after_fee: afterFee,
-                transaction_id: txId,
-                status: 'pending',
-                created_at: Math.floor(Date.now() / 1000)
-            };
-
-            const created = await firebaseRequest('withdrawals', 'POST', withdrawData);
-            if (created && created.name) {
-                await updateUser(fromId, { balance: 0 });
-                await clearUserState(fromId);
-                await sendMessage(reqChannel, buildWithdrawRequestText(withdrawData, 'pending'), withdrawActionKeyboard(created.name));
-                await sendMessage(chatId, `🔔 <b>Withdrawal Submitted!</b>\n\nAmount: <b>${formatNumber(amount)} STAR</b>\nAfter Fee: <b>${formatNumber(afterFee)} STAR</b>\nStatus: <b>PENDING ⏳</b>`, await getUserMenu(fromId));
+            if (text === '📢 Channel Settings') {
+                const paymentChannel = await getPaymentVerificationChannel();
+                const forceChannels = await getAllForceChannels();
+                const requestChannel = await getWithdrawRequestChannel();
+                const textOut = `📢 <b>CHANNEL SETTINGS</b>\n━━━━━━━━━━━━━━━━━━\n\n🔐 <b>Payment Channel:</b> <code>${escapeHtml(paymentChannel || 'Not Set')}</code>\n📢 <b>Force Channels:</b> <b>${Object.keys(forceChannels).length}</b>\n💸 <b>Request Channel:</b> <code>${escapeHtml(requestChannel || 'Not Set')}</code>`;
+                const kb = [
+                    [{ text: '🔐 Set Payment/Verification Channel', callback_data: 'payment_channel_set' }],
+                    [{ text: '💸 Set Withdraw Request Channel', callback_data: 'withdraw_request_channel_set' }],
+                    ...forceJoinKeyboard().inline_keyboard
+                ];
+                await sendMessage(chatId, textOut, { inline_keyboard: kb });
+                return;
             }
-            return;
+            if (text === '🎁 বোনাস সেটিংস') {
+                const welcome = Number(await getSetting('welcome_bonus', 0));
+                const referral = Number(await getSetting('referral_bonus', 0));
+                await sendMessage(chatId, `🎁 <b>বোনাস সেটিংস</b>\n━━━━━━━━━━━━━━━━━━\n\n🎁 Welcome Bonus: <b>${formatNumber(welcome)} ⭐</b>\n👥 Referral Bonus: <b>${formatNumber(referral)} ⭐</b>`, bonusKeyboard());
+                return;
+            }
+            if (text === '🎟 Gift Code') {
+                await sendMessage(chatId, "🎟 <b>Gift Code Management</b>", giftKeyboard());
+                return;
+            }
+            if (text === '💸 Withdraw Settings') {
+                const min = Number(await getSetting('min_withdraw', 1));
+                const fee = Number(await getSetting('withdraw_fee_percent', 0));
+                await sendMessage(chatId, `💸 <b>Withdraw Settings</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Minimum: <b>${formatNumber(min)} ⭐</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>`, withdrawSettingsKeyboard());
+                return;
+            }
+            if (text === '👮 এডমিন ম্যানেজমেন্ট' && isSuperAdmin(fromId)) {
+                await sendMessage(chatId, "👮 <b>এডমিন ম্যানেজমেন্ট</b>", adminManagementKeyboard());
+                return;
+            }
+            if (text === '📢 ব্রডকাস্ট') {
+                await setAdminState(fromId, 'broadcast');
+                await sendMessage(chatId, "📢 <b>ব্রডকাস্ট মেসেজটি লিখে পাঠান:</b>", getCancelKeyboard());
+                return;
+            }
         }
     }
 }
