@@ -798,13 +798,13 @@ async function handleUpdate(update) {
             if (data === 'balance_add') {
                 await setAdminState(fromId, 'add_balance');
                 await answerCallback(callback.id, 'Send details');
-                await sendMessage(fromId, "➕ <b>ইউজারের ব্যালেন্স যোগ করুন</b>\n\nFormat:\n<code>USER_ID | AMOUNT</code>\n\nউদাহরণ:\n<code>123456789 | 5</code>", getCancelKeyboard());
+                await sendMessage(fromId, "➕ <b>ইউজারের ব্যালেন্স যোগ করুন</b>\n\nFormat:\n<code>USER_ID - AMOUNT</code>\n\nউদাহরণ:\n<code>123456789 - 5</code>", getCancelKeyboard());
                 return;
             }
             if (data === 'balance_cut') {
                 await setAdminState(fromId, 'cut_balance');
                 await answerCallback(callback.id, 'Send details');
-                await sendMessage(fromId, "➖ <b>ইউজারের ব্যালেন্স কাটুন</b>\n\nFormat:\n<code>USER_ID | AMOUNT</code>", getCancelKeyboard());
+                await sendMessage(fromId, "➖ <b>ইউজারের ব্যালেন্স কাটুন</b>\n\nFormat:\n<code>USER_ID - AMOUNT</code>", getCancelKeyboard());
                 return;
             }
             if (data === 'bonus_welcome') {
