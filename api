@@ -4,9 +4,9 @@
 |--------------------------------------------------------------------------
 */
 
-// ⚠️ এখানে আপনার বটের আসল Token এবং Username দিন (@ ছাড়া)
-const BOT_TOKEN = 'আপনার_বট_টোকেন_এখানে_দিন';
-const BOT_USERNAME = 'আপনার_বটের_ইউজারনেম';
+//
+const BOT_TOKEN = '8852283670:AAFnBJlS7mnNh6NIglslOGzNFj8OEZoMEB0';
+const BOT_USERNAME = 'AS_Star_Eran_Bot';
 
 const SUPER_ADMIN_ID = 8045367594;
 
