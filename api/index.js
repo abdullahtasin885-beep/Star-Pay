@@ -1,0 +1,705 @@
+/*
+|--------------------------------------------------------------------------
+| STAR EARNING BOT FOR VERCEL (SERVERLESS 24/7)
+|--------------------------------------------------------------------------
+*/
+
+const BOT_TOKEN = '8852283670:AAFnBJlS7mnNh6NIglslOGzNFj8OEZoMEB0';
+const BOT_USERNAME = 'AS_Star_Eran_Bot';
+
+const SUPER_ADMIN_ID = 8045367594;
+
+const FIREBASE_URL = 'https://star-fe264-default-rtdb.firebaseio.com';
+const FIREBASE_API_KEY = 'AIzaSyBfyhT9DHKYv5m6UtTnZF_lX0URts2Y9PM';
+
+const FIREBASE_AUTH_EMAIL = 'sakib301210@gmail.com';
+const FIREBASE_AUTH_PASSWORD = '@mayabiri';
+const FIREBASE_AUTH_UID = 'WUVFzcS2jvXDXgGfUAQPl9ESl943';
+
+/*
+|--------------------------------------------------------------------------
+| BASIC HELPERS
+|--------------------------------------------------------------------------
+*/
+function escapeHtml(text) {
+    if (typeof text !== 'string') text = String(text ?? '');
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatNumber(number) {
+    const num = Number(number);
+    if (!isFinite(num)) return 'Unlimited';
+    if (Math.abs(num - Math.round(num)) < 0.0000001) {
+        return Math.round(num).toString();
+    }
+    return parseFloat(num.toFixed(8)).toString();
+}
+
+function normalizeText(text) {
+    if (typeof text !== 'string') return '';
+    return text.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+}
+
+function isNumericAmount(value) {
+    if (typeof value !== 'string' && typeof value !== 'number') return false;
+    const str = String(value).trim();
+    return str !== '' && !isNaN(Number(str)) && isFinite(Number(str));
+}
+
+function formatDate(timestamp) {
+    return new Date(timestamp * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatTime(timestamp) {
+    return new Date(timestamp * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+/*
+|--------------------------------------------------------------------------
+| FIREBASE AUTH & REQUESTS
+|--------------------------------------------------------------------------
+*/
+let cachedToken = null;
+let tokenExpiresAt = 0;
+
+async function getFirebaseToken() {
+    const now = Math.floor(Date.now() / 1000);
+    if (cachedToken && now < tokenExpiresAt) return cachedToken;
+
+    const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`;
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                email: FIREBASE_AUTH_EMAIL,
+                password: FIREBASE_AUTH_PASSWORD,
+                returnSecureToken: true,
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data || !data.idToken || String(data.localId) !== String(FIREBASE_AUTH_UID)) return null;
+
+        cachedToken = data.idToken;
+        tokenExpiresAt = now + Math.max(60, (parseInt(data.expiresIn) || 3600) - 60);
+        return cachedToken;
+    } catch {
+        return null;
+    }
+}
+
+async function firebaseRequest(path, method = 'GET', data = null) {
+    const token = await getFirebaseToken();
+    if (!token) return null;
+
+    path = path.replace(/^\/+|\/+$/g, '');
+    if (!path) return null;
+
+    const url = `${FIREBASE_URL.replace(/\/+$/, '')}/${path}.json?auth=${encodeURIComponent(token)}`;
+    const options = {
+        method: method.toUpperCase(),
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+    };
+    if (data !== null) options.body = JSON.stringify(data);
+
+    try {
+        const res = await fetch(url, options);
+        if (!res.ok) return null;
+        const text = await res.text();
+        if (text === 'null' || text === '') return null;
+        return JSON.parse(text);
+    } catch {
+        return null;
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| FIREBASE DATA HELPERS
+|--------------------------------------------------------------------------
+*/
+async function getUser(userId) {
+    const res = await firebaseRequest(`users/${userId}`);
+    return res && typeof res === 'object' ? res : null;
+}
+
+async function setUser(userId, data) {
+    return (await firebaseRequest(`users/${userId}`, 'PUT', data)) !== null;
+}
+
+async function updateUser(userId, data) {
+    return (await firebaseRequest(`users/${userId}`, 'PATCH', data)) !== null;
+}
+
+async function getSetting(key, defaultValue = null) {
+    const val = await firebaseRequest(`settings/${key}`);
+    return val === null ? defaultValue : val;
+}
+
+async function setSetting(key, value) {
+    return (await firebaseRequest(`settings/${key}`, 'PUT', value)) !== null;
+}
+
+async function deleteSetting(key) {
+    return (await firebaseRequest(`settings/${key}`, 'DELETE')) !== null;
+}
+
+async function getAllUsers() {
+    const res = await firebaseRequest('users');
+    return res && typeof res === 'object' ? res : {};
+}
+
+async function getAllAdmins() {
+    const res = await firebaseRequest('admins');
+    return res && typeof res === 'object' ? res : {};
+}
+
+async function getAllForceChannels() {
+    const res = await firebaseRequest('force_channels');
+    return res && typeof res === 'object' ? res : {};
+}
+
+async function getPaymentVerificationChannel() {
+    let raw = await getSetting('payment_verification_channel', '');
+    if (Array.isArray(raw)) raw = raw[0];
+    let channel = String(raw || '').trim();
+
+    if (channel !== '') {
+        await setSetting('payment_verification_channel', channel);
+        await deleteSetting('withdraw_required_channel');
+        return channel;
+    }
+
+    let legacy = await getSetting('withdraw_required_channel', '');
+    if (Array.isArray(legacy)) legacy = legacy[0];
+    legacy = String(legacy || '').trim();
+
+    if (legacy !== '') {
+        await setSetting('payment_verification_channel', legacy);
+        await deleteSetting('withdraw_required_channel');
+        return legacy;
+    }
+
+    await deleteSetting('withdraw_required_channel');
+    return '';
+}
+
+async function getWithdrawRequestChannel() {
+    let raw = await getSetting('withdraw_request_channel', '');
+    if (Array.isArray(raw)) raw = raw[0];
+    const channel = String(raw || '').trim();
+    if (channel !== '') {
+        await setSetting('withdraw_request_channel', channel);
+    }
+    return channel;
+}
+
+async function getGiftCodes() {
+    const codes = await firebaseRequest('gift_codes');
+    return codes && typeof codes === 'object' ? codes : {};
+}
+
+async function getUserWithdrawals(userId) {
+    const all = await firebaseRequest('withdrawals');
+    if (!all || typeof all !== 'object') return [];
+
+    const result = [];
+    for (const [id, withdraw] of Object.entries(all)) {
+        if (withdraw && String(withdraw.user_id) === String(userId)) {
+            withdraw._id = String(id);
+            result.push(withdraw);
+        }
+    }
+    result.sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+    return result.slice(0, 10);
+}
+
+/*
+|--------------------------------------------------------------------------
+| TELEGRAM API HELPERS
+|--------------------------------------------------------------------------
+*/
+async function telegramApi(method, params = {}) {
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(params)
+        });
+        if (!res.ok) return { ok: false };
+        return await res.json();
+    } catch {
+        return { ok: false };
+    }
+}
+
+async function sendMessage(chatId, text, replyMarkup = null) {
+    const params = {
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+    };
+    if (replyMarkup) params.reply_markup = replyMarkup;
+    return await telegramApi('sendMessage', params);
+}
+
+async function sendReplyMessage(chatId, replyToMessageId, text, replyMarkup = null) {
+    const params = {
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true }
+    };
+    if (replyMarkup) params.reply_markup = replyMarkup;
+    return await telegramApi('sendMessage', params);
+}
+
+async function answerCallback(callbackId, text = '', alert = false) {
+    await telegramApi('answerCallbackQuery', {
+        callback_query_id: callbackId,
+        text: text,
+        show_alert: alert
+    });
+}
+
+/*
+|--------------------------------------------------------------------------
+| STATE MANAGEMENT
+|--------------------------------------------------------------------------
+*/
+async function setAdminState(userId, action, extra = {}) {
+    return (await firebaseRequest(`admin_states/${userId}`, 'PUT', {
+        action,
+        created_at: Math.floor(Date.now() / 1000),
+        ...extra
+    })) !== null;
+}
+
+async function getAdminState(userId) {
+    const res = await firebaseRequest(`admin_states/${userId}`);
+    return res && typeof res === 'object' ? res : null;
+}
+
+async function clearAdminState(userId) {
+    await firebaseRequest(`admin_states/${userId}`, 'DELETE');
+}
+
+async function setUserState(userId, action, extra = {}) {
+    return (await firebaseRequest(`user_states/${userId}`, 'PUT', {
+        action,
+        created_at: Math.floor(Date.now() / 1000),
+        ...extra
+    })) !== null;
+}
+
+async function getUserState(userId) {
+    const res = await firebaseRequest(`user_states/${userId}`);
+    return res && typeof res === 'object' ? res : null;
+}
+
+async function clearUserState(userId) {
+    await firebaseRequest(`user_states/${userId}`, 'DELETE');
+}
+
+function isSuperAdmin(userId) {
+    return String(userId) === String(SUPER_ADMIN_ID);
+}
+
+async function isAdmin(userId) {
+    if (isSuperAdmin(userId)) return true;
+    const admin = await firebaseRequest(`admins/${userId}`);
+    return Boolean(admin && typeof admin === 'object' && admin.active);
+}
+
+/*
+|--------------------------------------------------------------------------
+| MENUS & KEYBOARDS
+|--------------------------------------------------------------------------
+*/
+async function getUserMenu(userId) {
+    const isAdm = await isAdmin(userId);
+    const keyboard = [
+        [{ text: '👤 My Account' }, { text: '👥 Refer & Earn' }],
+        [{ text: '💸 Withdraw' }, { text: '📜 History' }],
+        [{ text: '🎟 Gift Code' }]
+    ];
+    if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
+    return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
+}
+
+function getAdminMenu(superAdmin) {
+    const keyboard = [
+        [{ text: '📊 পরিসংখ্যান' }, { text: '👥 User & Balance Management' }],
+        [{ text: '💸 Withdraw Settings' }, { text: '📢 Channel Settings' }],
+        [{ text: '🎁 বোনাস সেটিংস' }, { text: '🎟 Gift Code' }],
+        [{ text: '📢 ব্রডকাস্ট' }]
+    ];
+    if (superAdmin) keyboard.push([{ text: '👮 এডমিন ম্যানেজমেন্ট' }]);
+    keyboard.push([{ text: '🔙 ইউজার প্যানেলে ফিরে যান' }]);
+    return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
+}
+
+function getCancelKeyboard() {
+    return { keyboard: [[{ text: '/cancel' }]], resize_keyboard: true, one_time_keyboard: true };
+}
+
+function withdrawActionKeyboard(withdrawId) {
+    return {
+        inline_keyboard: [
+            [
+                { text: '✅ Approve', callback_data: `withdraw_approve_${withdrawId}` },
+                { text: '❌ Reject', callback_data: `withdraw_reject_${withdrawId}` }
+            ]
+        ]
+    };
+}
+
+function normalizeTelegramUsernameInput(input) {
+    input = normalizeText(input);
+    input = input.replace(/^https?:\/\/t\.me\//i, '@').replace(/^t\.me\//i, '@').trim();
+    if (input !== '' && !input.startsWith('@')) input = '@' + input;
+    return input;
+}
+
+function isValidTelegramUsername(username) {
+    return /^@[A-Za-z0-9_]{5,32}$/.test(username);
+}
+
+function isValidChannelTarget(channel) {
+    channel = channel.trim();
+    return /^@[A-Za-z0-9_]{5,32}$/.test(channel) || /^-100[0-9]{5,20}$/.test(channel);
+}
+
+async function getTelegramChat(chatId) {
+    const res = await telegramApi('getChat', { chat_id: chatId });
+    return res && res.ok ? res.result : null;
+}
+
+async function getTelegramUsername(userId) {
+    const chat = await getTelegramChat(userId);
+    return chat && chat.username ? '@' + chat.username : `@admin_${userId}`;
+}
+
+async function isJoinedChannel(channel, userId) {
+    if (!channel) return false;
+    const res = await telegramApi('getChatMember', { chat_id: channel, user_id: userId });
+    if (!res || !res.ok) return false;
+    const status = res.result?.status;
+    if (['creator', 'administrator', 'member'].includes(status)) return true;
+    if (status === 'restricted') return Boolean(res.result?.is_member);
+    return false;
+}
+
+async function isUserJoinedAllChannels(userId) {
+    const forceChannels = await getAllForceChannels();
+    for (const ch of Object.values(forceChannels)) {
+        if (ch && ch.channel_id && !(await isJoinedChannel(ch.channel_id, userId))) return false;
+    }
+    const paymentChannel = await getPaymentVerificationChannel();
+    if (paymentChannel && !(await isJoinedChannel(paymentChannel, userId))) return false;
+    return true;
+}
+
+async function showForceJoin(chatId) {
+    const forceChannels = await getAllForceChannels();
+    const keyboard = [];
+    for (const ch of Object.values(forceChannels)) {
+        if (ch && ch.channel_link) {
+            keyboard.push([{ text: `📢 ${ch.channel_name || 'Join Channel'}`, url: ch.channel_link }]);
+        }
+    }
+    const paymentChannel = await getPaymentVerificationChannel();
+    if (paymentChannel) {
+        const link = paymentChannel.startsWith('@') ? `https://t.me/${paymentChannel.slice(1)}` : '';
+        if (link) keyboard.push([{ text: '📢 Payment/Verification Channel', url: link }]);
+    }
+    keyboard.push([{ text: '✅ Verify Joining', callback_data: 'verify_join' }]);
+
+    await sendMessage(chatId, "🔐 <b>Verification Required</b>\n━━━━━━━━━━━━━━━━━━\n\nবট ব্যবহার করার আগে নিচের সকল Required Channel/Group-এ Join করতে হবে।\n\nসবগুলোতে Join করার পরে <b>✅ Verify Joining</b> চাপুন।", { inline_keyboard: keyboard });
+}
+
+function buildWithdrawRequestText(withdraw, status = 'pending', processedBy = '') {
+    const amount = Number(withdraw.amount || 0);
+    const fee = Number(withdraw.fee_percent || 0);
+    const afterFee = Number(withdraw.after_fee || amount);
+    const userId = String(withdraw.user_id || '');
+    const firstName = String(withdraw.first_name || 'User');
+    const withdrawUsername = String(withdraw.withdraw_username || 'N/A');
+    const transactionId = String(withdraw.transaction_id || '');
+    const createdAt = Number(withdraw.created_at || Math.floor(Date.now() / 1000));
+
+    const statusUpper = status.toUpperCase();
+    const statusEmoji = { 'APPROVED': '✅', 'REJECTED': '❌', 'FAILED': '⚠️' }[statusUpper] || '⏳';
+    const title = statusUpper === 'PENDING' ? '💸 <b>NEW WITHDRAW REQUEST</b>' : `${statusEmoji} <b>WITHDRAW REQUEST ${statusUpper}</b>`;
+
+    let text = `${title}\n━━━━━━━━━━━━━━━━━━\n` +
+        `👤 Name: <b>${escapeHtml(firstName)}</b>\n` +
+        `🆔 Telegram ID: <code>${escapeHtml(userId)}</code>\n\n` +
+        `💰 Amount: <b>${formatNumber(amount)} STAR</b>\n` +
+        `📱 Payment Username: <b>${escapeHtml(withdrawUsername)}</b>\n` +
+        `📊 Fee: <b>${formatNumber(fee)}%</b>\n` +
+        `💵 After Fee: <b>${formatNumber(afterFee)} STAR</b>\n\n` +
+        `🧾 Transaction ID: <code>${escapeHtml(transactionId)}</code>\n` +
+        `📅 Date: <b>${formatDate(createdAt)}</b>\n` +
+        `⏰ Time: <b>${formatTime(createdAt)}</b>\n\n` +
+        `━━━━━━━━━━━━━━━━━━\n` +
+        `📌 Status: <b>${statusUpper} ${statusEmoji}</b>`;
+
+    if (processedBy) text += `\n👮 Processed By: <b>${escapeHtml(processedBy)}</b>`;
+    return text;
+}
+
+/*
+|--------------------------------------------------------------------------
+| MAIN LOGIC HANDLER
+|--------------------------------------------------------------------------
+*/
+async function handleUpdate(update) {
+    if (update.callback_query) {
+        const callback = update.callback_query;
+        const fromId = String(callback.from.id);
+        const data = callback.data || '';
+        const chatId = callback.message?.chat?.id;
+        const messageId = callback.message?.message_id;
+
+        if (data === 'verify_join') {
+            const user = await getUser(fromId);
+            const joinedAll = await isUserJoinedAllChannels(fromId);
+            if (!joinedAll) {
+                await answerCallback(callback.id, '❌ আপনি এখনো সব Channel-এ Join করেননি!', true);
+                return;
+            }
+            if (user && !user.is_verified) {
+                const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
+                await updateUser(fromId, {
+                    is_verified: true,
+                    balance: Number(user.balance || 0) + welcomeBonus,
+                    welcome_claimed: true,
+                    verified_at: Math.floor(Date.now() / 1000)
+                });
+                if (user.referred_by && !user.referral_rewarded) {
+                    const ref = await getUser(user.referred_by);
+                    if (ref) {
+                        const refBonus = Number(await getSetting('referral_bonus', 0));
+                        await updateUser(user.referred_by, {
+                            balance: Number(ref.balance || 0) + refBonus,
+                            total_referrals: Number(ref.total_referrals || 0) + 1
+                        });
+                        await updateUser(fromId, { referral_rewarded: true });
+                        await sendMessage(user.referred_by, `🎉 <b>New Referral Verified!</b>\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>`);
+                    }
+                }
+            }
+            await answerCallback(callback.id, '🎉 Verification Successful!');
+            await sendMessage(fromId, "🎉 <b>Verification Successful!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনি সফলভাবে ভেরিফিকেশন সম্পন্ন করেছেন।", await getUserMenu(fromId));
+            return;
+        }
+
+        const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
+        if (match) {
+            if (!(await isAdmin(fromId))) {
+                await answerCallback(callback.id, '⛔ Permission Denied!', true);
+                return;
+            }
+            const action = match[1];
+            const withdrawId = match[2];
+            const withdraw = await firebaseRequest(`withdrawals/${withdrawId}`);
+
+            if (!withdraw || withdraw.status !== 'pending') {
+                await answerCallback(callback.id, '⚠️ Request already processed!', true);
+                return;
+            }
+
+            const adminUsername = await getTelegramUsername(fromId);
+            const now = Math.floor(Date.now() / 1000);
+
+            if (action === 'approve') {
+                await firebaseRequest(`withdrawals/${withdrawId}`, 'PATCH', {
+                    status: 'approved',
+                    processed_by: fromId,
+                    processed_by_username: adminUsername,
+                    processed_at: now
+                });
+                await answerCallback(callback.id, '✅ Approved!');
+                await sendMessage(withdraw.user_id, `🎉 <b>Withdrawal Approved!</b>\n\n💰 Amount: <b>${formatNumber(withdraw.after_fee)} STAR</b>\n🧾 ID: <code>${withdraw.transaction_id}</code>`);
+                if (chatId && messageId) {
+                    await sendReplyMessage(chatId, messageId, buildWithdrawRequestText(withdraw, 'approved', adminUsername));
+                }
+                return;
+            }
+
+            if (action === 'reject') {
+                const target = await getUser(withdraw.user_id);
+                if (target) {
+                    await updateUser(withdraw.user_id, {
+                        balance: Number(target.balance || 0) + Number(withdraw.amount || 0)
+                    });
+                }
+                await firebaseRequest(`withdrawals/${withdrawId}`, 'PATCH', {
+                    status: 'rejected',
+                    processed_by: fromId,
+                    processed_by_username: adminUsername,
+                    processed_at: now,
+                    refunded: true
+                });
+                await answerCallback(callback.id, '❌ Rejected & Refunded!');
+                await sendMessage(withdraw.user_id, `❌ <b>Withdrawal Rejected</b>\n\n${formatNumber(withdraw.amount)} STAR balance-এ রিফান্ড করা হয়েছে।`);
+                if (chatId && messageId) {
+                    await sendReplyMessage(chatId, messageId, buildWithdrawRequestText(withdraw, 'rejected', adminUsername));
+                }
+                return;
+            }
+        }
+    }
+
+    if (update.message && update.message.text) {
+        const msg = update.message;
+        const fromId = String(msg.from.id);
+        const chatId = String(msg.chat.id);
+        const text = normalizeText(msg.text);
+        const isAdm = await isAdmin(fromId);
+
+        let user = await getUser(fromId);
+        if (!user) {
+            let refBy = null;
+            const startMatch = text.match(/^\/start\s+(\d+)$/i);
+            if (startMatch && startMatch[1] !== fromId && (await getUser(startMatch[1]))) {
+                refBy = startMatch[1];
+            }
+            user = {
+                telegram_id: fromId,
+                first_name: msg.from.first_name || 'User',
+                balance: 0,
+                referred_by: refBy,
+                is_verified: false,
+                created_at: Math.floor(Date.now() / 1000)
+            };
+            await setUser(fromId, user);
+        }
+
+        if (text.toLowerCase() === '/cancel') {
+            await clearAdminState(fromId);
+            await clearUserState(fromId);
+            await sendMessage(chatId, "❌ অপারেশন বাতিল করা হয়েছে।", isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
+            return;
+        }
+
+        if (text.startsWith('/start')) {
+            if (!isAdm && !(await isUserJoinedAllChannels(fromId))) {
+                await showForceJoin(chatId);
+                return;
+            }
+            await sendMessage(chatId, `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━\nআমাদের বটের সকল সুবিধা উপভোগ করুন।`, isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
+            return;
+        }
+
+        if (text === '👤 My Account') {
+            const u = await getUser(fromId);
+            await sendMessage(chatId, `👤 <b>MY ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━\n\n🆔 ID: <code>${fromId}</code>\n⭐ Balance: <b>${formatNumber(u?.balance || 0)} STAR</b>\n👥 Referrals: <b>${u?.total_referrals || 0}</b>`);
+            return;
+        }
+
+        if (text === '👥 Refer & Earn') {
+            const refBonus = Number(await getSetting('referral_bonus', 0));
+            const link = `https://t.me/${BOT_USERNAME}?start=${fromId}`;
+            await sendMessage(chatId, `👥 <b>REFER & EARN</b>\n━━━━━━━━━━━━━━━━━━\n\n🔗 লিঙ্ক:\n<code>${link}</code>\n\n⭐ প্রতি Referral: <b>${formatNumber(refBonus)} STAR</b>`);
+            return;
+        }
+
+        if (text === '💸 Withdraw') {
+            const u = await getUser(fromId);
+            const bal = Number(u?.balance || 0);
+            const min = Number(await getSetting('min_withdraw', 1));
+            if (bal < min) {
+                await sendMessage(chatId, `⚠️ <b>Insufficient Balance!</b>\n\nMinimum Withdraw: <b>${formatNumber(min)} STAR</b>`);
+                return;
+            }
+            await setUserState(fromId, 'withdraw_username');
+            await sendMessage(chatId, "💸 <b>যে Username-এ Stars পাঠাতে চান সেটি লিখুন:</b>\n\nউদাহরণ: <code>@username</code>", getCancelKeyboard());
+            return;
+        }
+
+        if (text === '📜 History') {
+            const history = await getUserWithdrawals(fromId);
+            if (!history.length) {
+                await sendMessage(chatId, "📜 কোনো Withdrawal হিস্টোরি নেই।");
+                return;
+            }
+            let out = "📜 <b>YOUR WITHDRAWAL HISTORY</b>\n━━━━━━━━━━━━━━━━━━\n";
+            for (const h of history) {
+                out += `\n• <b>${h.status.toUpperCase()}</b>: ${formatNumber(h.amount)} STAR (${h.withdraw_username})`;
+            }
+            await sendMessage(chatId, out);
+            return;
+        }
+
+        const userState = await getUserState(fromId);
+        if (userState && userState.action === 'withdraw_username') {
+            const target = normalizeTelegramUsernameInput(text);
+            if (!isValidTelegramUsername(target)) {
+                await sendMessage(chatId, "❌ সঠিক Username দিন: <code>@username</code>");
+                return;
+            }
+            const u = await getUser(fromId);
+            const amount = Number(u?.balance || 0);
+            const fee = Number(await getSetting('withdraw_fee_percent', 0));
+            const afterFee = Math.max(0, amount - (amount * fee / 100));
+            const txId = `${fromId}${Math.floor(Date.now() / 1000)}`;
+
+            const reqChannel = await getWithdrawRequestChannel();
+            if (!reqChannel) {
+                await sendMessage(chatId, "⚠️ Withdraw Channel Configured নেই।");
+                await clearUserState(fromId);
+                return;
+            }
+
+            const withdrawData = {
+                user_id: fromId,
+                first_name: msg.from.first_name || 'User',
+                withdraw_username: target,
+                amount: amount,
+                fee_percent: fee,
+                after_fee: afterFee,
+                transaction_id: txId,
+                status: 'pending',
+                created_at: Math.floor(Date.now() / 1000)
+            };
+
+            const created = await firebaseRequest('withdrawals', 'POST', withdrawData);
+            if (created && created.name) {
+                await updateUser(fromId, { balance: 0 });
+                await clearUserState(fromId);
+                await sendMessage(reqChannel, buildWithdrawRequestText(withdrawData, 'pending'), withdrawActionKeyboard(created.name));
+                await sendMessage(chatId, `🔔 <b>Withdrawal Submitted!</b>\n\nAmount: <b>${formatNumber(amount)} STAR</b>\nAfter Fee: <b>${formatNumber(afterFee)} STAR</b>\nStatus: <b>PENDING ⏳</b>`, await getUserMenu(fromId));
+            }
+            return;
+        }
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| VERCEL SERVERLESS EXPORT
+|--------------------------------------------------------------------------
+*/
+module.exports = async (req, res) => {
+    if (req.method === 'POST') {
+        try {
+            const update = req.body || {};
+            await handleUpdate(update);
+        } catch (err) {
+            console.error(err);
+        }
+        return res.status(200).send('OK');
+    }
+    return res.status(200).send('Bot is running on Vercel ⚡');
+};
