@@ -1,6 +1,6 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (STYLISH 2-COLUMN GRID BUTTONS 🔥)
+| STAR EARNING BOT FOR VERCEL (PREMIUM UI & FIXED WITHDRAWAL)
 |--------------------------------------------------------------------------
 */
 
@@ -422,10 +422,7 @@ function bonusKeyboard() {
 function withdrawSettingsKeyboard() {
     return {
         inline_keyboard: [
-            [
-                { text: '💰 মিনিমাম উইথড্র', callback_data: 'withdraw_minimum' },
-                { text: '💰 সর্বোচ্চ উইথড্র', callback_data: 'withdraw_maximum' }
-            ],
+            [{ text: '💰 ফিক্সড উইথড্র অ্যামাউন্ট সেট করুন', callback_data: 'withdraw_minimum' }],
             [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee' }]
         ]
     };
@@ -501,53 +498,40 @@ async function isUserJoinedAllChannels(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| ২ কলামের স্টাইলিশ ফোর্স জয়েন বাটন ফাংশন (2-COLUMN GRID)
+| FORCE JOIN MESSAGE (আগের মতো ১ কলামে সবুজ আইকনযুক্ত বাটন)
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId) {
     const forceChannels = await getAllForceChannels();
-    const channelButtons = [];
+    const keyboard = [];
 
-    // ফোর্স চ্যানেলগুলো লিস্টে যোগ করা
     for (const ch of Object.values(forceChannels)) {
         if (ch && ch.channel_link) {
-            channelButtons.push({
-                text: `✅ ${ch.channel_name || 'JOIN CHANNEL'} ↗`,
+            keyboard.push([{
+                text: `🟢 ${ch.channel_name || 'JOIN CHANNEL'} ↗`,
                 url: ch.channel_link
-            });
+            }]);
         }
     }
 
-    // পেমেন্ট/ভেরিফিকেশন চ্যানেল থাকলে যোগ করা
     const paymentChannel = await getPaymentVerificationChannel();
     if (paymentChannel) {
         const link = paymentChannel.startsWith('@') ? `https://t.me/${paymentChannel.slice(1)}` : '';
         if (link) {
-            channelButtons.push({
-                text: '✅ PAYOUT CHANNEL ↗',
+            keyboard.push([{
+                text: '🟢 PAYOUT CHANNEL ↗',
                 url: link
-            });
+            }]);
         }
     }
 
-    // বাটনগুলোকে ২ কলামে (পাশাপাশি ২টি করে) সাজানো
-    const keyboard = [];
-    for (let i = 0; i < channelButtons.length; i += 2) {
-        if (i + 1 < channelButtons.length) {
-            keyboard.push([channelButtons[i], channelButtons[i + 1]]);
-        } else {
-            keyboard.push([channelButtons[i]]);
-        }
-    }
-
-    // নিচে বড় করে JOINED NOW ভেরিফিকেশন বাটন
-    keyboard.push([{ text: '🎁 JOINED NOW', callback_data: 'verify_join' }]);
+    keyboard.push([{ text: '✅ Verify Joining', callback_data: 'verify_join' }]);
 
     const text = 
-        `🔐 <b>Required Channels Verification</b>\n` +
+        `🔐 <b>Verification Required</b>\n` +
         `━━━━━━━━━━━━━━━━━━\n\n` +
         `বট ব্যবহার করার আগে নিচের সকল চ্যানেলে যুক্ত (Join) হতে হবে।\n\n` +
-        `সবগুলোতে Join করার পর নিচে থাকা <b>🎁 JOINED NOW</b> বাটনে চাপুন।`;
+        `সবগুলোতে Join করার পর নিচে থাকা <b>✅ Verify Joining</b> বাটনে চাপুন।`;
 
     await sendMessage(chatId, text, { inline_keyboard: keyboard });
 }
@@ -596,7 +580,7 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // VERIFY JOINING (🎁 JOINED NOW বাটনে চাপলে)
+        // VERIFY JOINING (২টি আলাদা মেসেজ পাঠানো)
         if (data === 'verify_join') {
             const user = await getUser(fromId);
             const joinedAll = await isUserJoinedAllChannels(fromId);
@@ -614,7 +598,6 @@ async function handleUpdate(update) {
                     verified_at: Math.floor(Date.now() / 1000)
                 });
 
-                // রেফারেল চেক: শুধুমাত্র সফল ভেরিফিকেশনে রেফারার বোনাস পাবে
                 if (user.referred_by && !user.referral_rewarded) {
                     const ref = await getUser(user.referred_by);
                     if (ref) {
@@ -631,16 +614,43 @@ async function handleUpdate(update) {
 
             await answerCallback(callback.id, '🎉 Verification Successful!');
             
-            // মার্জিত ও সুন্দর স্বাগতম বার্তা
+            // মেসেজ ১: স্বাগতম বার্তা
             const name = escapeHtml(callback.from.first_name || 'ইউজার');
             const politeWelcomeText = 
                 `✨ <b>স্বাগতম, ${name}!</b> ✨\n` +
                 `━━━━━━━━━━━━━━━━━━\n\n` +
                 `🎉 <b>আপনার ভেরিফিকেশন সফলভাবে সম্পন্ন হয়েছে!</b>\n\n` +
-                `আমাদের <b>Star Earning Bot</b>-এ আপনাকে আন্তরিক স্বাগতম। এখন থেকে আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন এবং বন্ধুদের রেফার করে সহজেই STAR পয়েন্ট উপার্জন করতে পারবেন। ⭐\n\n` +
-                `🌟 <i>যেকোনো সুবিধা পেতে নিচের মেনু অপশনগুলো ব্যবহার করুন। আপনার পথচলা সুন্দর ও আনন্দদায়ক হোক!</i>`;
+                `আমাদের <b>Star Earning Bot</b>-এ আপনাকে আন্তরিক স্বাগতম। এখন থেকে আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন এবং বন্ধুদের রেফার করে সহজেই STAR পয়েন্ট উপার্জন করতে পারবেন। ⭐`;
+            await sendMessage(fromId, politeWelcomeText);
 
-            await sendMessage(fromId, politeWelcomeText, await getUserMenu(fromId));
+            // মেসেজ ২: মেইন মেনু মেসেজ ও বাটন
+            const mainMenuPrompt = 
+                `🏠 <b>Main Menu</b>\n` +
+                `━━━━━━━━━━━━━━━━━━\n` +
+                `🌟 <i>যেকোনো সুবিধা পেতে নিচের মেনু অপশনগুলো ব্যবহার করুন। আপনার পথচলা সুন্দর ও আনন্দদায়ক হোক!</i>`;
+            await sendMessage(fromId, mainMenuPrompt, await getUserMenu(fromId));
+            return;
+        }
+
+        // LEADERBOARD CALLBACK
+        if (data === 'leaderboard') {
+            const users = await getAllUsers();
+            const sortedUsers = Object.values(users)
+                .filter(u => u && u.total_referrals > 0)
+                .sort((a, b) => Number(b.total_referrals || 0) - Number(a.total_referrals || 0))
+                .slice(0, 10);
+
+            let leaderText = "🏆 <b>TOP REFERRAL LEADERBOARD</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+            if (!sortedUsers.length) {
+                leaderText += "এখনো কোনো লিডারবোর্ড রেকর্ড নেই।";
+            } else {
+                sortedUsers.forEach((u, i) => {
+                    const medal = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : `<b>${i + 1}.</b>`));
+                    leaderText += `${medal} <b>${escapeHtml(u.first_name || 'User')}</b> — <b>${u.total_referrals}</b> Referrals\n`;
+                });
+            }
+            await answerCallback(callback.id, 'Leaderboard Loaded');
+            await sendMessage(fromId, leaderText);
             return;
         }
 
@@ -797,15 +807,8 @@ async function handleUpdate(update) {
             if (data === 'withdraw_minimum') {
                 await setAdminState(fromId, 'minimum_withdraw');
                 await answerCallback(callback.id, 'Send amount');
-                const cur = Number(await getSetting('min_withdraw', 1));
-                await sendMessage(fromId, `💸 <b>মিনিমাম উইথড্র সেট করুন</b>\n\nবর্তমান Minimum: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Minimum Amount পাঠান:`, getCancelKeyboard());
-                return;
-            }
-            if (data === 'withdraw_maximum') {
-                await setAdminState(fromId, 'maximum_withdraw');
-                await answerCallback(callback.id, 'Send amount');
-                const cur = await getSetting('max_withdraw', null);
-                await sendMessage(fromId, `💸 <b>সর্বোচ্চ উইথড্র সেট করুন</b>\n\nবর্তমান Maximum: <b>${cur === null ? 'Unlimited' : formatNumber(Number(cur))} ⭐</b>\n\nনতুন Maximum Amount পাঠান:`, getCancelKeyboard());
+                const cur = Number(await getSetting('min_withdraw', 15));
+                await sendMessage(fromId, `💸 <b>ফিক্সড উইথড্র অ্যামাউন্ট সেট করুন</b>\n━━━━━━━━━━━━━━━━━━\n\nবর্তমান ফিক্সড উইথড্র: <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান (ইউজার ঠিক এই পরিমাণ উইথড্র করতে পারবে):`, getCancelKeyboard());
                 return;
             }
             if (data === 'withdraw_fee') {
@@ -1067,14 +1070,7 @@ async function handleUpdate(update) {
                 if (action === 'minimum_withdraw' && isNumericAmount(text)) {
                     await setSetting('min_withdraw', Number(text));
                     await clearAdminState(fromId);
-                    await sendMessage(chatId, `💸 <b>Minimum Withdrawal Updated: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
-                    return;
-                }
-
-                if (action === 'maximum_withdraw' && isNumericAmount(text)) {
-                    await setSetting('max_withdraw', Number(text));
-                    await clearAdminState(fromId);
-                    await sendMessage(chatId, `💸 <b>Maximum Withdrawal Updated: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    await sendMessage(chatId, `💸 <b>ফিক্সড উইথড্র অ্যামাউন্ট সেট করা হয়েছে: ${formatNumber(Number(text))} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
 
@@ -1132,7 +1128,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // USER STATE INPUTS
+        // USER STATE: WITHDRAWAL PROCESSING (FIXED EXACT AMOUNT)
         if (!isAdm) {
             const uState = await getUserState(fromId);
             if (uState && uState.action === 'withdraw_username') {
@@ -1142,9 +1138,17 @@ async function handleUpdate(update) {
                     return;
                 }
                 const u = await getUser(fromId);
-                const amount = Number(u?.balance || 0);
+                const fixedAmount = Number(await getSetting('min_withdraw', 15));
+                const currentBalance = Number(u?.balance || 0);
+
+                if (currentBalance < fixedAmount) {
+                    await sendMessage(chatId, `⚠️ <b>Insufficient Balance!</b>\n\nউইথড্র করার জন্য আপনার ব্যালেন্সে কমপক্ষে <b>${formatNumber(fixedAmount)} STAR</b> প্রয়োজন।`, await getUserMenu(fromId));
+                    await clearUserState(fromId);
+                    return;
+                }
+
                 const fee = Number(await getSetting('withdraw_fee_percent', 0));
-                const afterFee = Math.max(0, amount - (amount * fee / 100));
+                const afterFee = Math.max(0, fixedAmount - (fixedAmount * fee / 100));
                 const txId = `${fromId}${Math.floor(Date.now() / 1000)}`;
 
                 const reqChannel = await getWithdrawRequestChannel();
@@ -1158,7 +1162,7 @@ async function handleUpdate(update) {
                     user_id: fromId,
                     first_name: msg.from.first_name || 'User',
                     withdraw_username: target,
-                    amount: amount,
+                    amount: fixedAmount,
                     fee_percent: fee,
                     after_fee: afterFee,
                     transaction_id: txId,
@@ -1168,10 +1172,11 @@ async function handleUpdate(update) {
 
                 const created = await firebaseRequest('withdrawals', 'POST', withdrawData);
                 if (created && created.name) {
-                    await updateUser(fromId, { balance: 0 });
+                    // শুধুমাত্র ফিক্সড অ্যামাউন্ট ব্যালেন্স থেকে কাটা হবে
+                    await updateUser(fromId, { balance: Math.max(0, currentBalance - fixedAmount) });
                     await clearUserState(fromId);
                     await sendMessage(reqChannel, buildWithdrawRequestText(withdrawData, 'pending'), withdrawActionKeyboard(created.name));
-                    await sendMessage(chatId, `🔔 <b>Withdrawal Submitted!</b>\n\nAmount: <b>${formatNumber(amount)} STAR</b>\nAfter Fee: <b>${formatNumber(afterFee)} STAR</b>\nStatus: <b>PENDING ⏳</b>`, await getUserMenu(fromId));
+                    await sendMessage(chatId, `🔔 <b>Withdrawal Submitted!</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>\n💵 After Fee: <b>${formatNumber(afterFee)} STAR</b>\n📬 To: <b>${escapeHtml(target)}</b>\n📌 Status: <b>PENDING ⏳</b>`, await getUserMenu(fromId));
                 }
                 return;
             }
@@ -1236,31 +1241,58 @@ async function handleUpdate(update) {
             return;
         }
 
+        // REFERRAL SECTION (ছবির মতো হুবহু ডিজাইন + SHARE & LEADERBOARD বাটন)
         if (text === '👥 Refer & Earn') {
+            const u = await getUser(fromId);
+            const refCount = Number(u?.total_referrals || 0);
             const refBonus = Number(await getSetting('referral_bonus', 0));
             const link = `https://t.me/${BOT_USERNAME}?start=${fromId}`;
-            await sendMessage(chatId, `👥 <b>REFER & EARN</b>\n━━━━━━━━━━━━━━━━━━\n\nShare your referral link with your friends.\n\n🔗 লিঙ্ক:\n<code>${link}</code>\n\n━━━━━━━━━━━━━━━━━━\n⭐ প্রতি Verified Referral: <b>${formatNumber(refBonus)} STAR</b>\n\n📌 <b>শর্ত:</b> আপনার রেফারেল লিঙ্ক দিয়ে জয়েন করে ইউজার সব চ্যানেলে ভেরিফাই করলেই বোনাস পাবেন।`);
+            const shareText = encodeURIComponent(`🌟 Join our Star Earning Bot and earn free Telegram Stars! 🚀\n\nLink: ${link}`);
+            const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${shareText}`;
+
+            const refMessage = 
+                `👋 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n` +
+                `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+                `🎁 <b>Referral Center</b>\n\n` +
+                `👥 <b>Total Referrals :</b> <b>${refCount}</b>\n` +
+                `💰 <b>Reward Per Referral :</b> <b>${formatNumber(refBonus)} ⭐</b>\n\n` +
+                `🔗 <b>Your Referral Link:</b>\n` +
+                `<code>${link}</code>\n\n` +
+                `🏆 <i>Invite more friends and reach the top leaderboard!</i>`;
+
+            const refKeyboard = {
+                inline_keyboard: [
+                    [
+                        { text: '🚀 Share', url: shareUrl },
+                        { text: '🏆 Leaderboard', callback_data: 'leaderboard' }
+                    ]
+                ]
+            };
+
+            await sendMessage(chatId, refMessage, refKeyboard);
             return;
         }
 
+        // WITHDRAW BUTTON (FIXED EXACT AMOUNT AUTO SELECT)
         if (text === '💸 Withdraw') {
             const u = await getUser(fromId);
             const bal = Number(u?.balance || 0);
-            const min = Number(await getSetting('min_withdraw', 1));
-            const max = getSetting('max_withdraw') !== null ? Number(await getSetting('max_withdraw')) : Infinity;
+            const fixedAmount = Number(await getSetting('min_withdraw', 15));
 
-            if (bal < min) {
-                await sendMessage(chatId, `⚠️ <b>Insufficient Balance!</b>\n\nMinimum Withdraw: <b>${formatNumber(min)} STAR</b>`);
-                return;
-            }
-
-            if (bal > max) {
-                await sendMessage(chatId, `⚠️ <b>Maximum Withdraw Limit: ${formatNumber(max)} STAR</b>`);
+            if (bal < fixedAmount) {
+                await sendMessage(chatId, `⚠️ <b>Insufficient Balance!</b>\n━━━━━━━━━━━━━━━━━━\n\nউইথড্র করতে আপনার ব্যালেন্সে কমপক্ষে <b>${formatNumber(fixedAmount)} STAR</b> প্রয়োজন।\n💰 আপনার বর্তমান ব্যালেন্স: <b>${formatNumber(bal)} STAR</b>`);
                 return;
             }
 
             await setUserState(fromId, 'withdraw_username');
-            await sendMessage(chatId, "💸 <b>যে Username-এ Stars পাঠাতে চান সেটি লিখুন:</b>\n\nউদাহরণ: <code>@username</code>", getCancelKeyboard());
+            const withdrawPrompt = 
+                `💸 <b>WITHDRAW STARS</b>\n` +
+                `━━━━━━━━━━━━━━━━━━\n\n` +
+                `💰 Withdrawal Amount: <b>${formatNumber(fixedAmount)} STAR</b> (Fixed)\n\n` +
+                `যে Telegram Username-এ Stars পাঠাতে চান সেটি লিখুন:\n` +
+                `উদাহরণ: <code>@username</code>`;
+
+            await sendMessage(chatId, withdrawPrompt, getCancelKeyboard());
             return;
         }
 
@@ -1320,10 +1352,9 @@ async function handleUpdate(update) {
                 return;
             }
             if (text === '💸 Withdraw Settings') {
-                const min = Number(await getSetting('min_withdraw', 1));
-                const max = await getSetting('max_withdraw', null);
+                const min = Number(await getSetting('min_withdraw', 15));
                 const fee = Number(await getSetting('withdraw_fee_percent', 0));
-                await sendMessage(chatId, `💸 <b>Withdraw Settings</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Minimum: <b>${formatNumber(min)} ⭐</b>\n💰 Maximum: <b>${max === null ? 'Unlimited' : formatNumber(Number(max))} ⭐</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>`, withdrawSettingsKeyboard());
+                await sendMessage(chatId, `💸 <b>Withdraw Settings</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Fixed Withdrawal Amount: <b>${formatNumber(min)} STAR</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>`, withdrawSettingsKeyboard());
                 return;
             }
             if (text === '👮 এডমিন ম্যানেজমেন্ট' && isSuperAdmin(fromId)) {
