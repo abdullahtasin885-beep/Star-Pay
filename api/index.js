@@ -1,11 +1,12 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (FULL VERSION 100% WORKING)
+| STAR EARNING BOT FOR VERCEL (WITH REAL DEVICE IP VERIFICATION 🛡️)
 |--------------------------------------------------------------------------
 */
 
 const BOT_TOKEN = '8852283670:AAFnBJlS7mnNh6NIglslOGzNFj8OEZoMEB0';
 const BOT_USERNAME = 'AS_Star_Eran_Bot';
+const APP_URL = 'https://star-pay-inky.vercel.app'; // আপনার Vercel ডোমেইন
 
 const SUPER_ADMIN_ID = 8045367594;
 
@@ -353,7 +354,7 @@ async function getUserMenu(userId) {
     const keyboard = [
         [{ text: '👤 My Account' }, { text: '👥 Refer & Earn' }],
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
-        [{ text: '🎟 Gift Code' }]
+        [{ text: '🎁 Gift Code' }]
     ];
     if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
@@ -363,7 +364,7 @@ function getAdminMenu(superAdmin) {
     const keyboard = [
         [{ text: '📊 পরিসংখ্যান' }, { text: '👥 User & Balance Management' }],
         [{ text: '💸 Withdraw Settings' }, { text: '📢 Channel Settings' }],
-        [{ text: '🎁 বোনাস সেটিংস' }, { text: '🎟 Gift Code' }],
+        [{ text: '🎁 বোনাস সেটিংস' }, { text: '🎁 Gift Code' }],
         [{ text: '📢 ব্রডকাস্ট' }]
     ];
     if (superAdmin) keyboard.push([{ text: '👮 এডমিন ম্যানেজমেন্ট' }]);
@@ -426,9 +427,7 @@ function withdrawSettingsKeyboard() {
                 { text: '💰 মিনিমাম উইথড্র', callback_data: 'withdraw_minimum' },
                 { text: '💰 সর্বোচ্চ উইথড্র', callback_data: 'withdraw_maximum' }
             ],
-            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee' }],
-            [{ text: '📢 Payment/Verification Channel', callback_data: 'payment_channel_set' }],
-            [{ text: '💸 Withdraw Request Channel', callback_data: 'withdraw_request_channel_set' }]
+            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee' }]
         ]
     };
 }
@@ -514,9 +513,12 @@ async function showForceJoin(chatId) {
         const link = paymentChannel.startsWith('@') ? `https://t.me/${paymentChannel.slice(1)}` : '';
         if (link) keyboard.push([{ text: '📢 Payment/Verification Channel', url: link }]);
     }
-    keyboard.push([{ text: '✅ Verify Joining', callback_data: 'verify_join' }]);
+    
+    // ডিভাইস IP ভেরিফিকেশন ওয়েব লিঙ্ক বাটন
+    const verifyUrl = `${APP_URL}/api/index?action=verify_ip&uid=${chatId}`;
+    keyboard.push([{ text: '🔐 Verify Device & Join', url: verifyUrl }]);
 
-    await sendMessage(chatId, "🔐 <b>Verification Required</b>\n━━━━━━━━━━━━━━━━━━\n\nবট ব্যবহার করার আগে নিচের সকল Required Channel/Group-এ Join করতে হবে।\n\nসবগুলোতে Join করার পরে <b>✅ Verify Joining</b> চাপুন।", { inline_keyboard: keyboard });
+    await sendMessage(chatId, "🔐 <b>Verification Required</b>\n━━━━━━━━━━━━━━━━━━\n\nবট ব্যবহার করার আগে নিচের সকল Required Channel-এ Join করতে হবে।\n\nসবগুলোতে Join করার পরে নিচের <b>🔐 Verify Device & Join</b> বাটনে ক্লিক করে ডিভাইস ভেরিফিকেশন সম্পন্ন করুন।\n\n⚠️ <i>মনে রাখবেন: একই ডিভাইস বা ওয়াইফাই দিয়ে একাধিক অ্যাকাউন্ট খোলা নিষিদ্ধ।</i>", { inline_keyboard: keyboard });
 }
 
 function buildWithdrawRequestText(withdraw, status = 'pending', processedBy = '') {
@@ -552,6 +554,117 @@ function buildWithdrawRequestText(withdraw, status = 'pending', processedBy = ''
 
 /*
 |--------------------------------------------------------------------------
+| IP VERIFICATION HANDLER (BROWSER WEB VERIFICATION)
+|--------------------------------------------------------------------------
+*/
+async function handleDeviceIpVerification(req, res) {
+    const uid = String(req.query.uid || '').trim();
+    if (!uid || !/^\d+$/.test(uid)) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.status(400).send(renderHtmlPage('❌ Invalid Request', 'অকার্যকর ইউজার আইডি। টেলিগ্রাম বট থেকে আবার চেষ্টা করুন।', false));
+    }
+
+    // ক্লায়েন্টের আসল IP অ্যাড্রেস রিড করা
+    const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '';
+    const clientIp = rawIp.split(',')[0].trim();
+    const ipKey = clientIp.replace(/[\.\:\s]/g, '_');
+
+    let user = await getUser(uid);
+    if (!user) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.status(404).send(renderHtmlPage('❌ User Not Found', 'বটে ইউজার পাওয়া যায়নি। টেলিগ্রামে /start লিখে আবার চেষ্টা করুন।', false));
+    }
+
+    if (user.is_verified) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.status(200).send(renderHtmlPage('✅ Already Verified!', 'আপনার অ্যাকাউন্ট ইতোমধ্যে ভেরিফাই করা আছে। টেলিগ্রাম বটে ফিরে যান।', true));
+    }
+
+    // ১. চ্যানেল মেম্বারশিপ চেক
+    const joinedAll = await isUserJoinedAllChannels(uid);
+    if (!joinedAll) {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.status(200).send(renderHtmlPage('⚠️ চ্যানেল জয়েন বাকি আছে!', 'আপনি এখনো সব Required Channel-এ জয়েন করেননি। আগে সব চ্যানেলে জয়েন করুন।', false));
+    }
+
+    // ২. ফায়ারবেসে একই IP দিয়ে আগে অন্য কেউ একাউন্ট করেছে কিনা চেক
+    const existingIpRecord = await firebaseRequest(`used_ips/${ipKey}`);
+    if (existingIpRecord && String(existingIpRecord.user_id) !== uid) {
+        await sendMessage(uid, "❌ <b>ডিভাইস ভেরিফিকেশন ব্যর্থ!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার ডিভাইস বা ওয়াইফাই (IP) থেকে ইতোমধ্যে অন্য একটি অ্যাকাউন্ট ভেরিফাই করা হয়েছে।\n\n⚠️ একই ডিভাইস থেকে একাধিক অ্যাকাউন্ট খোলা সম্পূর্ণ নিষিদ্ধ।");
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.status(403).send(renderHtmlPage('❌ মাল্টিপল অ্যাকাউন্ট নিষিদ্ধ!', 'আপনার ডিভাইস বা ওয়াইফাই নেটওয়ার্ক থেকে ইতোমধ্যে একটি অ্যাকাউন্ট ভেরিফাই করা আছে।', false));
+    }
+
+    // ৩. নতুন IP রেজিস্টার ও ইউজার ভেরিফিকেশন সফল করা
+    const now = Math.floor(Date.now() / 1000);
+    await firebaseRequest(`used_ips/${ipKey}`, 'PUT', {
+        user_id: uid,
+        ip: clientIp,
+        verified_at: now
+    });
+
+    const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
+    await updateUser(uid, {
+        is_verified: true,
+        device_ip: clientIp,
+        balance: Number(user.balance || 0) + welcomeBonus,
+        welcome_claimed: true,
+        verified_at: now
+    });
+
+    // ৪. রেফারারকে রিওয়ার্ড দেওয়া (যদি রেফারেল দিয়ে জয়েন করে থাকে)
+    if (user.referred_by && !user.referral_rewarded) {
+        const ref = await getUser(user.referred_by);
+        if (ref) {
+            const refBonus = Number(await getSetting('referral_bonus', 0));
+            await updateUser(user.referred_by, {
+                balance: Number(ref.balance || 0) + refBonus,
+                total_referrals: Number(ref.total_referrals || 0) + 1
+            });
+            await updateUser(uid, { referral_rewarded: true });
+            await sendMessage(user.referred_by, `🎉 <b>New Referral Verified!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার রেফারেলে যুক্ত হওয়া নতুন ইউজার ডিভাইস ভেরিফিকেশন সম্পন্ন করেছে!\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>\n👥 Total Referrals: <b>${Number(ref.total_referrals || 0) + 1}</b>`);
+        }
+    }
+
+    // টেলিগ্রামে কনফার্মেশন মেসেজ
+    await sendMessage(uid, "🎉 <b>ডিভাইস ভেরিফিকেশন সফল হয়েছে!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনার ডিভাইস IP সফলভাবে ভেরিফাই করা হয়েছে। এখন আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন। ⭐", await getUserMenu(uid));
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(renderHtmlPage('🎉 Verification Successful!', 'আপনার ডিভাইস সফলভাবে ভেরিফাই হয়েছে! এখন টেলিগ্রাম বটে ফিরে যান।', true));
+}
+
+function renderHtmlPage(title, message, isSuccess) {
+    const icon = isSuccess ? '✅' : '❌';
+    const color = isSuccess ? '#10B981' : '#EF4444';
+    return `<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0F172A; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 15px; }
+        .card { background: #1E293B; border: 1px solid #334155; border-radius: 16px; padding: 30px 20px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .icon { font-size: 55px; margin-bottom: 15px; }
+        h2 { color: ${color}; margin-top: 0; font-size: 22px; }
+        p { color: #94A3B8; font-size: 15px; line-height: 1.6; margin-bottom: 25px; }
+        .btn { display: inline-block; background: #2563EB; color: #fff; text-decoration: none; padding: 12px 25px; border-radius: 10px; font-weight: bold; font-size: 16px; transition: 0.2s; }
+        .btn:hover { background: #1D4ED8; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">${icon}</div>
+        <h2>${title}</h2>
+        <p>${message}</p>
+        <a href="https://t.me/${BOT_USERNAME}" class="btn">🚀 Open Telegram Bot</a>
+    </div>
+</body>
+</html>`;
+}
+
+/*
+|--------------------------------------------------------------------------
 | MAIN LOGIC HANDLER
 |--------------------------------------------------------------------------
 */
@@ -562,39 +675,6 @@ async function handleUpdate(update) {
         const data = callback.data || '';
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
-
-        if (data === 'verify_join') {
-            const user = await getUser(fromId);
-            const joinedAll = await isUserJoinedAllChannels(fromId);
-            if (!joinedAll) {
-                await answerCallback(callback.id, '❌ আপনি এখনো সব Channel-এ Join করেননি!', true);
-                return;
-            }
-            if (user && !user.is_verified) {
-                const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
-                await updateUser(fromId, {
-                    is_verified: true,
-                    balance: Number(user.balance || 0) + welcomeBonus,
-                    welcome_claimed: true,
-                    verified_at: Math.floor(Date.now() / 1000)
-                });
-                if (user.referred_by && !user.referral_rewarded) {
-                    const ref = await getUser(user.referred_by);
-                    if (ref) {
-                        const refBonus = Number(await getSetting('referral_bonus', 0));
-                        await updateUser(user.referred_by, {
-                            balance: Number(ref.balance || 0) + refBonus,
-                            total_referrals: Number(ref.total_referrals || 0) + 1
-                        });
-                        await updateUser(fromId, { referral_rewarded: true });
-                        await sendMessage(user.referred_by, `🎉 <b>New Referral Verified!</b>\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>`);
-                    }
-                }
-            }
-            await answerCallback(callback.id, '🎉 Verification Successful!');
-            await sendMessage(fromId, "🎉 <b>Verification Successful!</b>\n━━━━━━━━━━━━━━━━━━\n\nআপনি সফলভাবে ভেরিফিকেশন সম্পন্ন করেছেন।", await getUserMenu(fromId));
-            return;
-        }
 
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
@@ -779,12 +859,12 @@ async function handleUpdate(update) {
             if (data === 'gift_create') {
                 await setAdminState(fromId, 'gift_code');
                 await answerCallback(callback.id, 'Send details');
-                await sendMessage(fromId, "🎟 <b>নতুন Gift Code তৈরি করুন</b>\n\nFormat:\n<code>CODE | STAR_AMOUNT | MAX_USERS</code>\n\nExample:\n<code>WELCOME50 | 5 | 100</code>", getCancelKeyboard());
+                await sendMessage(fromId, "🎁 <b>নতুন Gift Code তৈরি করুন</b>\n\nFormat:\n<code>CODE | STAR_AMOUNT | MAX_USERS</code>\n\nExample:\n<code>WELCOME50 | 5 | 100</code>", getCancelKeyboard());
                 return;
             }
             if (data === 'gift_list') {
                 const codes = (await firebaseRequest('gift_codes')) || {};
-                let out = "🎟 <b>Gift Code তালিকা</b>\n━━━━━━━━━━━━━━━━━━";
+                let out = "🎁 <b>Gift Code তালিকা</b>\n━━━━━━━━━━━━━━━━━━";
                 if (!Object.keys(codes).length) out += "\n\nকোনো Gift Code নেই।";
                 else {
                     for (const [code, gift] of Object.entries(codes)) {
@@ -1093,7 +1173,7 @@ async function handleUpdate(update) {
         if (text === '👥 Refer & Earn') {
             const refBonus = Number(await getSetting('referral_bonus', 0));
             const link = `https://t.me/${BOT_USERNAME}?start=${fromId}`;
-            await sendMessage(chatId, `👥 <b>REFER & EARN</b>\n━━━━━━━━━━━━━━━━━━\n\n🔗 লিঙ্ক:\n<code>${link}</code>\n\n⭐ প্রতি Referral: <b>${formatNumber(refBonus)} STAR</b>`);
+            await sendMessage(chatId, `👥 <b>REFER & EARN</b>\n━━━━━━━━━━━━━━━━━━\n\nShare your referral link with your friends.\n\n🔗 লিঙ্ক:\n<code>${link}</code>\n\n━━━━━━━━━━━━━━━━━━\n⭐ প্রতি Verified Referral: <b>${formatNumber(refBonus)} STAR</b>\n\n📌 <b>শর্ত:</b> আপনার রেফারেল লিঙ্ক দিয়ে জয়েন করে ইউজার সব চ্যানেলে ভেরিফাই করলেই বোনাস পাবেন।`);
             return;
         }
 
@@ -1101,18 +1181,26 @@ async function handleUpdate(update) {
             const u = await getUser(fromId);
             const bal = Number(u?.balance || 0);
             const min = Number(await getSetting('min_withdraw', 1));
+            const max = getSetting('max_withdraw') !== null ? Number(await getSetting('max_withdraw')) : Infinity;
+
             if (bal < min) {
                 await sendMessage(chatId, `⚠️ <b>Insufficient Balance!</b>\n\nMinimum Withdraw: <b>${formatNumber(min)} STAR</b>`);
                 return;
             }
+
+            if (bal > max) {
+                await sendMessage(chatId, `⚠️ <b>Maximum Withdraw Limit: ${formatNumber(max)} STAR</b>`);
+                return;
+            }
+
             await setUserState(fromId, 'withdraw_username');
             await sendMessage(chatId, "💸 <b>যে Username-এ Stars পাঠাতে চান সেটি লিখুন:</b>\n\nউদাহরণ: <code>@username</code>", getCancelKeyboard());
             return;
         }
 
-        if (text === '🎟 Gift Code' && !isAdm) {
+        if (text === '🎁 Gift Code' && !isAdm) {
             await setUserState(fromId, 'gift_redeem');
-            await sendMessage(chatId, "🎟 <b>REDEEM GIFT CODE</b>\n\nআপনার Gift Code পাঠান:", getCancelKeyboard());
+            await sendMessage(chatId, "🎁 <b>REDEEM GIFT CODE</b>\n\nআপনার Gift Code পাঠান:", getCancelKeyboard());
             return;
         }
 
@@ -1161,14 +1249,15 @@ async function handleUpdate(update) {
                 await sendMessage(chatId, `🎁 <b>বোনাস সেটিংস</b>\n━━━━━━━━━━━━━━━━━━\n\n🎁 Welcome Bonus: <b>${formatNumber(welcome)} ⭐</b>\n👥 Referral Bonus: <b>${formatNumber(referral)} ⭐</b>`, bonusKeyboard());
                 return;
             }
-            if (text === '🎟 Gift Code') {
-                await sendMessage(chatId, "🎟 <b>Gift Code Management</b>", giftKeyboard());
+            if (text === '🎁 Gift Code') {
+                await sendMessage(chatId, "🎁 <b>Gift Code Management</b>", giftKeyboard());
                 return;
             }
             if (text === '💸 Withdraw Settings') {
                 const min = Number(await getSetting('min_withdraw', 1));
+                const max = await getSetting('max_withdraw', null);
                 const fee = Number(await getSetting('withdraw_fee_percent', 0));
-                await sendMessage(chatId, `💸 <b>Withdraw Settings</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Minimum: <b>${formatNumber(min)} ⭐</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>`, withdrawSettingsKeyboard());
+                await sendMessage(chatId, `💸 <b>Withdraw Settings</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Minimum: <b>${formatNumber(min)} ⭐</b>\n💰 Maximum: <b>${max === null ? 'Unlimited' : formatNumber(Number(max))} ⭐</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>`, withdrawSettingsKeyboard());
                 return;
             }
             if (text === '👮 এডমিন ম্যানেজমেন্ট' && isSuperAdmin(fromId)) {
@@ -1186,10 +1275,16 @@ async function handleUpdate(update) {
 
 /*
 |--------------------------------------------------------------------------
-| VERCEL SERVERLESS EXPORT
+| VERCEL SERVERLESS EXPORT (ROUTER)
 |--------------------------------------------------------------------------
 */
 module.exports = async (req, res) => {
+    // ১. ডিভাইস IP ভেরিফিকেশন ওয়েব রিকোয়েস্ট (GET)
+    if (req.method === 'GET' && req.query.action === 'verify_ip') {
+        return await handleDeviceIpVerification(req, res);
+    }
+
+    // ২. টেলিগ্রাম বট মেসেজ ওয়েবহুক (POST)
     if (req.method === 'POST') {
         try {
             const update = req.body || {};
@@ -1199,5 +1294,6 @@ module.exports = async (req, res) => {
         }
         return res.status(200).send('OK');
     }
-    return res.status(200).send('Bot is running on Vercel ⚡');
+
+    return res.status(200).send('Bot is running on Vercel with Device IP Verification 🛡️');
 };
