@@ -1,6 +1,6 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (PREMIUM UI & FIXED WITHDRAWAL)
+| STAR EARNING BOT FOR VERCEL (100% WORKING & POLISHED)
 |--------------------------------------------------------------------------
 */
 
@@ -498,7 +498,7 @@ async function isUserJoinedAllChannels(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN MESSAGE (আগের মতো ১ কলামে সবুজ আইকনযুক্ত বাটন)
+| FORCE JOIN MESSAGE (স্ট্যান্ডার্ড সাধারণ বাটন)
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId) {
@@ -508,7 +508,7 @@ async function showForceJoin(chatId) {
     for (const ch of Object.values(forceChannels)) {
         if (ch && ch.channel_link) {
             keyboard.push([{
-                text: `🟢 ${ch.channel_name || 'JOIN CHANNEL'} ↗`,
+                text: `📢 ${ch.channel_name || 'Join Channel'}`,
                 url: ch.channel_link
             }]);
         }
@@ -519,7 +519,7 @@ async function showForceJoin(chatId) {
         const link = paymentChannel.startsWith('@') ? `https://t.me/${paymentChannel.slice(1)}` : '';
         if (link) {
             keyboard.push([{
-                text: '🟢 PAYOUT CHANNEL ↗',
+                text: '📢 Payment/Verification Channel',
                 url: link
             }]);
         }
@@ -530,7 +530,7 @@ async function showForceJoin(chatId) {
     const text = 
         `🔐 <b>Verification Required</b>\n` +
         `━━━━━━━━━━━━━━━━━━\n\n` +
-        `বট ব্যবহার করার আগে নিচের সকল চ্যানেলে যুক্ত (Join) হতে হবে।\n\n` +
+        `বট ব্যবহার করার আগে নিচের সকল Required Channel-এ Join করতে হবে।\n\n` +
         `সবগুলোতে Join করার পর নিচে থাকা <b>✅ Verify Joining</b> বাটনে চাপুন।`;
 
     await sendMessage(chatId, text, { inline_keyboard: keyboard });
@@ -580,7 +580,7 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // VERIFY JOINING (২টি আলাদা মেসেজ পাঠানো)
+        // VERIFY JOINING (২টি আলাদা মার্জিত মেসেজ পাঠানো)
         if (data === 'verify_join') {
             const user = await getUser(fromId);
             const joinedAll = await isUserJoinedAllChannels(fromId);
@@ -614,18 +614,20 @@ async function handleUpdate(update) {
 
             await answerCallback(callback.id, '🎉 Verification Successful!');
             
-            // মেসেজ ১: স্বাগতম বার্তা
+            // মেসেজ ১: মার্জিত স্বাগতম বার্তা
             const name = escapeHtml(callback.from.first_name || 'ইউজার');
             const politeWelcomeText = 
                 `✨ <b>স্বাগতম, ${name}!</b> ✨\n` +
                 `━━━━━━━━━━━━━━━━━━\n\n` +
                 `🎉 <b>আপনার ভেরিফিকেশন সফলভাবে সম্পন্ন হয়েছে!</b>\n\n` +
+                `আমাদের <b>Star Earning Bot</b>-এ আপনাকে আন্তরিক স্বাগতম। এখন থেকে আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন এবং বন্ধুদের রেফার করে সহজেই STAR পয়েন্ট উপার্জন করতে পারবেন। ⭐`;
             await sendMessage(fromId, politeWelcomeText);
 
             // মেসেজ ২: মেইন মেনু মেসেজ ও বাটন
             const mainMenuPrompt = 
                 `🏠 <b>Main Menu</b>\n` +
                 `━━━━━━━━━━━━━━━━━━\n` +
+                `🌟 <i>যেকোনো অপশন ব্যবহার করতে নিচের মেনু বাটনগুলো দেখুন। আপনার যাত্রা সুন্দর হোক!</i>`;
             await sendMessage(fromId, mainMenuPrompt, await getUserMenu(fromId));
             return;
         }
@@ -1126,7 +1128,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // USER STATE: WITHDRAWAL PROCESSING (FIXED EXACT AMOUNT)
+        // USER STATE: WITHDRAWAL PROCESSING (FIXED EXACT AMOUNT + CLICKABLE PAYMENT LINK)
         if (!isAdm) {
             const uState = await getUserState(fromId);
             if (uState && uState.action === 'withdraw_username') {
@@ -1143,6 +1145,15 @@ async function handleUpdate(update) {
                     await sendMessage(chatId, `⚠️ <b>Insufficient Balance!</b>\n\nউইথড্র করার জন্য আপনার ব্যালেন্সে কমপক্ষে <b>${formatNumber(fixedAmount)} STAR</b> প্রয়োজন।`, await getUserMenu(fromId));
                     await clearUserState(fromId);
                     return;
+                }
+
+                const paymentChannel = await getPaymentVerificationChannel();
+                let paymentChannelDisplay = escapeHtml(paymentChannel);
+                if (paymentChannel.startsWith('@')) {
+                    const cleanUsername = paymentChannel.slice(1);
+                    paymentChannelDisplay = `<a href="https://t.me/${cleanUsername}">@${cleanUsername}</a>`;
+                } else if (paymentChannel.startsWith('https://t.me/')) {
+                    paymentChannelDisplay = `<a href="${paymentChannel}">পেমেন্ট চ্যানেল</a>`;
                 }
 
                 const fee = Number(await getSetting('withdraw_fee_percent', 0));
@@ -1170,11 +1181,23 @@ async function handleUpdate(update) {
 
                 const created = await firebaseRequest('withdrawals', 'POST', withdrawData);
                 if (created && created.name) {
-                    // শুধুমাত্র ফিক্সড অ্যামাউন্ট ব্যালেন্স থেকে কাটা হবে
                     await updateUser(fromId, { balance: Math.max(0, currentBalance - fixedAmount) });
                     await clearUserState(fromId);
                     await sendMessage(reqChannel, buildWithdrawRequestText(withdrawData, 'pending'), withdrawActionKeyboard(created.name));
-                    await sendMessage(chatId, `🔔 <b>Withdrawal Submitted!</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>\n💵 After Fee: <b>${formatNumber(afterFee)} STAR</b>\n📬 To: <b>${escapeHtml(target)}</b>\n📌 Status: <b>PENDING ⏳</b>`, await getUserMenu(fromId));
+
+                    const withdrawConfirmText = 
+                        `🔔 <b>Withdrawal Submitted!</b>\n` +
+                        `━━━━━━━━━━━━━━━━━━\n\n` +
+                        `💰 Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n` +
+                        `📊 Fee: <b>${formatNumber(fee)}%</b>\n` +
+                        `💵 After Fee: <b>${formatNumber(afterFee)} STAR</b>\n` +
+                        `📬 To: <b>${escapeHtml(target)}</b>\n` +
+                        `🧾 ID: <code>${txId}</code>\n` +
+                        `📌 Status: <b>PENDING ⏳</b>\n\n` +
+                        `━━━━━━━━━━━━━━━━━━\n` +
+                        `⚠️ <i>অফিশিয়াল পেমেন্ট চ্যানেলে জয়েন না থাকলে উইথড্র এপ্রুভ হবে না:</i> ${paymentChannelDisplay}`;
+
+                    await sendMessage(chatId, withdrawConfirmText, await getUserMenu(fromId));
                 }
                 return;
             }
@@ -1239,7 +1262,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // REFERRAL SECTION (ছবির মতো হুবহু ডিজাইন + SHARE & LEADERBOARD বাটন)
+        // REFERRAL SECTION
         if (text === '👥 Refer & Earn') {
             const u = await getUser(fromId);
             const refCount = Number(u?.total_referrals || 0);
@@ -1271,7 +1294,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // WITHDRAW BUTTON (FIXED EXACT AMOUNT AUTO SELECT)
+        // WITHDRAW BUTTON
         if (text === '💸 Withdraw') {
             const u = await getUser(fromId);
             const bal = Number(u?.balance || 0);
