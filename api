@@ -7,7 +7,6 @@
 //
 const BOT_TOKEN = '8852283670:AAFnBJlS7mnNh6NIglslOGzNFj8OEZoMEB0';
 const BOT_USERNAME = 'AS_Star_Eran_Bot';
-
 const SUPER_ADMIN_ID = 8045367594;
 
 const FIREBASE_URL = 'https://star-fe264-default-rtdb.firebaseio.com';
