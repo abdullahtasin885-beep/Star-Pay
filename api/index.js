@@ -620,14 +620,12 @@ async function handleUpdate(update) {
                 `✨ <b>স্বাগতম, ${name}!</b> ✨\n` +
                 `━━━━━━━━━━━━━━━━━━\n\n` +
                 `🎉 <b>আপনার ভেরিফিকেশন সফলভাবে সম্পন্ন হয়েছে!</b>\n\n` +
-                `আমাদের <b>Star Earning Bot</b>-এ আপনাকে আন্তরিক স্বাগতম। এখন থেকে আপনি বটের সকল সুবিধা উপভোগ করতে পারবেন এবং বন্ধুদের রেফার করে সহজেই STAR পয়েন্ট উপার্জন করতে পারবেন। ⭐`;
             await sendMessage(fromId, politeWelcomeText);
 
             // মেসেজ ২: মেইন মেনু মেসেজ ও বাটন
             const mainMenuPrompt = 
                 `🏠 <b>Main Menu</b>\n` +
                 `━━━━━━━━━━━━━━━━━━\n` +
-                `🌟 <i>যেকোনো সুবিধা পেতে নিচের মেনু অপশনগুলো ব্যবহার করুন। আপনার পথচলা সুন্দর ও আনন্দদায়ক হোক!</i>`;
             await sendMessage(fromId, mainMenuPrompt, await getUserMenu(fromId));
             return;
         }
