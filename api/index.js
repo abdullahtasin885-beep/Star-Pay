@@ -1630,7 +1630,7 @@ async function handleUpdate(update) {
         if (text.startsWith('/start')) {
             const politeStartText = isAdm 
                 ? `👋 <b>স্বাগতম, ${escapeHtml(msg.from.first_name || 'Admin')}!</b>\n━━━━━━━━━━━━━━━━━━\nআপনার জন্য অ্যাডমিন কন্ট্রোল প্যানেল প্রস্তুত রয়েছে।`
-                : `🌟 <b>স্বাগতম, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━\nআমাদের <b>Star Earning Bot</b>-এ আপনাকে স্বাগতম। নিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশন নির্বাচন করুন।`;
+                : `🌟 <b>স্বাগতম, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━\nনিচের মেনু থেকে আপনার কাঙ্ক্ষিত অপশন নির্বাচন করুন।`;
 
             await sendMessage(chatId, politeStartText, isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
             return;
