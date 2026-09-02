@@ -1,7 +1,9 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (HARDWARE-LEVEL ANTI-MULTI-ACCOUNT)
-| 100% Strict Device Fingerprinting, Clean Split Messages & Native WebApp
+| STAR EARNING BOT FOR VERCEL (100% SECURE MULTI-ACCOUNT PROTECTION)
+| - Original Device Account Safe (Only New Duplicate Blocked)
+| - Admin Starts in User Mode with Admin Panel Switch
+| - Instant Auto-Notification to Target User on Balance Add/Deduct
 |--------------------------------------------------------------------------
 */
 
@@ -371,6 +373,7 @@ async function getUserMenu(userId) {
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
         [{ text: '🎁 Gift Code' }]
     ];
+    // এডমিন আইডি হলে নিচে এডমিন প্যানেলে যাওয়ার বাটন থাকবে
     if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
@@ -568,7 +571,6 @@ async function sendDeviceVerificationPrompt(chatId, userId, firstName) {
     const signature = generateVerificationSignature(userId, now);
     const verifyUrl = `${APP_URL}/api/index?action=verify_flow&uid=${userId}&name=${encodeURIComponent(firstName || 'User')}&t=${now}&sig=${signature}`;
 
-    // ২য় আলাদা মেসেজ (সিকিউরিটি স্ক্যান মিনি অ্যাপ বাটন)
     const text = 
         "🔐 <b>Device Security Scan</b>\n━━━━━━━━━━━━━━━━━━\n\n" +
         "Please complete quick device verification to unlock all bot features:";
@@ -634,7 +636,7 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SUBMISSION (HARDWARE-LEVEL VERIFICATION)
+| ANTI-MULTI-ACCOUNT SUBMISSION (STRICT - ONLY NEW DUPLICATE BLOCKED)
 |--------------------------------------------------------------------------
 */
 async function handleDeviceVerificationSubmit(req, res) {
@@ -655,7 +657,7 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(403).json({ success: false, message: 'Invalid signature' });
         }
 
-        // 2. Fetch User
+        // 2. Fetch Current Attempting User
         const user = await getUser(uid);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -686,21 +688,21 @@ async function handleDeviceVerificationSubmit(req, res) {
         const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
 
         let isMultipleAccount = false;
-        let conflictingUser = null;
+        let originalVerifiedUser = null;
 
         if (registeredHardware && String(registeredHardware.user_id) !== String(uid)) {
             isMultipleAccount = true;
-            conflictingUser = registeredHardware.user_id;
+            originalVerifiedUser = registeredHardware.user_id;
         } else if (registeredToken && String(registeredToken.user_id) !== String(uid)) {
             isMultipleAccount = true;
-            conflictingUser = registeredToken.user_id;
+            originalVerifiedUser = registeredToken.user_id;
         }
 
         if (isMultipleAccount) {
-            // Block User & Lock Menu
+            // শুধুমাত্র নতুন একাউন্টটি ব্লক হবে। আদি/আগের ভেরিফাইড একাউন্ট ১০০% অক্ষত থাকবে।
             await updateUser(uid, {
                 verification_status: 'multiple_account_blocked',
-                blocked_reason: `Same hardware detected as Telegram ID ${conflictingUser}`,
+                blocked_reason: `Same hardware detected as verified user ${originalVerifiedUser}`,
                 is_verified: false,
                 updated_at: now
             });
@@ -708,7 +710,7 @@ async function handleDeviceVerificationSubmit(req, res) {
             const blockMsg = 
                 "🚫 <b>Multiple Account Detected</b>\n\n" +
                 "Multiple accounts are not allowed on the same device.\n\n" +
-                "Your account could not be verified because another Telegram account has already been verified from this device.\n\n" +
+                "Your account could not be verified because another Telegram account is already verified on this device.\n\n" +
                 "If you believe this is a mistake, please contact support.";
             await sendMessage(uid, blockMsg, {
                 inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
@@ -717,7 +719,7 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
         }
 
-        // 6. Register Hardware & Device Token
+        // 6. Register Hardware & Device Token to this First User
         await firebaseRequest(`registered_hardware/${hardware_id}`, 'PUT', {
             user_id: String(uid),
             created_at: now
@@ -792,7 +794,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM MINI APP UI (EXACT SCREENSHOT MATCH + HARDFINGERPRINT)
+| TELEGRAM MINI APP UI (EXACT SCREENSHOT MATCH)
 |--------------------------------------------------------------------------
 */
 function renderMiniAppPage(uid, name, t, sig) {
@@ -984,7 +986,6 @@ function renderMiniAppPage(uid, name, t, sig) {
             tg.expand();
         }
 
-        // SHA-256 in browser
         async function sha256Browser(str) {
             const buffer = new TextEncoder().encode(str);
             const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
@@ -992,7 +993,6 @@ function renderMiniAppPage(uid, name, t, sig) {
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // GPU / WebGL Hardware Extraction
         function getGPU() {
             try {
                 const canvas = document.createElement('canvas');
@@ -1005,7 +1005,6 @@ function renderMiniAppPage(uid, name, t, sig) {
             }
         }
 
-        // Canvas Cryptographic Signature
         function getCanvasHash() {
             try {
                 const canvas = document.createElement('canvas');
@@ -1034,7 +1033,6 @@ function renderMiniAppPage(uid, name, t, sig) {
             const subEl = document.getElementById('subEl');
             const actionBtn = document.getElementById('actionBtn');
 
-            // 1. Persistent Device Token (localStorage + cookie + sessionStorage)
             let deviceToken = localStorage.getItem('tg_device_token') || sessionStorage.getItem('tg_device_token');
             if (!deviceToken) {
                 deviceToken = 'dt_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -1054,7 +1052,6 @@ function renderMiniAppPage(uid, name, t, sig) {
             iconEl.setAttribute('stroke', '#22d3ee');
             iconEl.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2m14-6h2m-2 6h2M7 5h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2zM9 9h6v6H9V9z"/>';
 
-            // Extract Hard Hardware Signals
             const gpu = getGPU();
             const canvasData = getCanvasHash();
             const screenData = screen.width + "x" + screen.height + "x" + screen.colorDepth + "@" + (window.devicePixelRatio || 1);
@@ -1063,7 +1060,6 @@ function renderMiniAppPage(uid, name, t, sig) {
             const platform = navigator.platform || '';
             const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
 
-            // Unique Hardware Signature
             const rawHardware = [gpu, canvasData, screenData, cores, touchPoints, platform, timezone].join('|||');
             const hardwareId = await sha256Browser(rawHardware);
 
@@ -1164,7 +1160,6 @@ async function handleUpdate(update) {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
                 await answerCallback(callback.id);
-                // পপআপ ছাড়া সরাসরি চ্যাটে মেসেজ
                 await sendMessage(chatId, "❌ <b>আপনি প্রয়োজনীয় চ্যানেলে জয়েন করেননি!</b>\n\nঅনুগ্রহ করে সব চ্যানেলে জয়েন করে আবার Verify বাটনে চাপ দিন।");
                 return;
             }
@@ -1183,7 +1178,7 @@ async function handleUpdate(update) {
                 const blockMsg = 
                     "🚫 <b>Multiple Account Detected</b>\n\n" +
                     "Multiple accounts are not allowed on the same device.\n\n" +
-                    "Your account could not be verified because another Telegram account has already been verified from this device.\n\n" +
+                    "Your account could not be verified because another Telegram account is already verified from this device.\n\n" +
                     "If you believe this is a mistake, please contact support.";
                 await sendMessage(fromId, blockMsg, {
                     inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
@@ -1191,7 +1186,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // চ্যানেল ভেরিফাই সফল -> আগের জয়েন মেসেজ ডিলিট
+            // চ্যানেল ভেরিফাই সফল -> আগের মেসেজ ডিলিট
             await answerCallback(callback.id);
             if (chatId && messageId) {
                 await deleteMessage(chatId, messageId);
@@ -1200,7 +1195,7 @@ async function handleUpdate(update) {
             // মেসেজ ১: চ্যানেল ভেরিফিকেশন সফল বার্তা
             await sendMessage(chatId, "✅ <b>Channel Verification Successful</b>");
 
-            // মেসেজ ২: সম্পূর্ণ আলাদা সিকিউরিটি স্ক্যান মিনি-অ্যাপ মেসেজ
+            // মেসেজ ২: আলাদা ডিভাইস ভেরিফিকেশন মিনি-অ্যাপ
             await sendDeviceVerificationPrompt(chatId, fromId, callback.from.first_name);
             return;
         }
@@ -1460,7 +1455,7 @@ async function handleUpdate(update) {
             await clearAdminState(fromId);
             await clearUserState(fromId);
             await updateUser(fromId, { withdraw_state: null });
-            await sendMessage(chatId, "❌ অপারেশন বাতিল করা হয়েছে।", isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
+            await sendMessage(chatId, "❌ অপারেশন বাতিল করা হয়েছে।", await getUserMenu(fromId));
             return;
         }
 
@@ -1523,6 +1518,7 @@ async function handleUpdate(update) {
                     return;
                 }
 
+                // ব্যালেন্স অ্যাড: ধাপ ১
                 if (action === 'add_balance_user') {
                     if (!/^\d+$/.test(text)) {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID পাঠান:", getCancelKeyboard());
@@ -1542,6 +1538,7 @@ async function handleUpdate(update) {
                     return;
                 }
 
+                // ব্যালেন্স অ্যাড: ধাপ ২ (অটো মেসেজ সহ)
                 if (action === 'add_balance_amount') {
                     if (!isNumericAmount(text) || Number(text) <= 0) {
                         await sendMessage(chatId, "❌ সঠিক Amount দিন:", getCancelKeyboard());
@@ -1555,13 +1552,16 @@ async function handleUpdate(update) {
                         await updateUser(targetId, { balance: newBal });
                         await clearAdminState(fromId);
                         await sendMessage(chatId, `✅ <b>Added +${formatNumber(amt)} ⭐</b>\n💰 New Balance: <b>${formatNumber(newBal)} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        
+                        // টার্গেট ইউজারের কাছে অটো নোটিফিকেশন মেসেজ
                         try {
-                            await sendMessage(targetId, `🎁 <b>+${formatNumber(amt)} STAR যোগ হয়েছে!</b>\n💰 ব্যালেন্স: <b>${formatNumber(newBal)} STAR ⭐</b>`);
+                            await sendMessage(targetId, `🎁 <b>আপনার অ্যাকাউন্টে +${formatNumber(amt)} STAR যোগ করা হয়েছে!</b>\n💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} STAR ⭐</b>`);
                         } catch {}
                     }
                     return;
                 }
 
+                // ব্যালেন্স কাট: ধাপ ১
                 if (action === 'cut_balance_user') {
                     if (!/^\d+$/.test(text)) {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID পাঠান:", getCancelKeyboard());
@@ -1581,6 +1581,7 @@ async function handleUpdate(update) {
                     return;
                 }
 
+                // ব্যালেন্স কাট: ধাপ ২ (অটো মেসেজ সহ)
                 if (action === 'cut_balance_amount') {
                     if (!isNumericAmount(text) || Number(text) <= 0) {
                         await sendMessage(chatId, "❌ সঠিক Amount দিন:", getCancelKeyboard());
@@ -1595,6 +1596,11 @@ async function handleUpdate(update) {
                         await updateUser(targetId, { balance: newBal });
                         await clearAdminState(fromId);
                         await sendMessage(chatId, `✅ <b>Deducted -${formatNumber(amt)} ⭐</b>\n💰 New Balance: <b>${formatNumber(newBal)} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        
+                        // টার্গেট ইউজারের কাছে অটো নোটিফিকেশন মেসেজ
+                        try {
+                            await sendMessage(targetId, `⚠️ <b>আপনার অ্যাকাউন্ট থেকে -${formatNumber(amt)} STAR কাটা হয়েছে!</b>\n💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} STAR ⭐</b>`);
+                        } catch {}
                     }
                     return;
                 }
@@ -1780,7 +1786,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // STRICT VERIFICATION PROTECTION ON ALL USERS & ACTIONS (MENU LOCK)
+        // STRICT VERIFICATION PROTECTION (MENU LOCK FOR UNVERIFIED USERS)
         if (!isAdm) {
             const isVerified = user.verification_status === 'verified';
             if (!isVerified) {
@@ -1806,22 +1812,24 @@ async function handleUpdate(update) {
             }
         }
 
-        // TEXT COMMANDS (VERIFIED USERS ONLY - DIRECT ACCESS WITHOUT VERIFICATION)
+        // START COMMAND (সবসময় ইউজার মোড মেনু দেখাবে)
         if (text.startsWith('/start')) {
-            const politeStartText = isAdm 
-                ? `👋 <b>Welcome, Admin!</b>\n\nAdmin Control Panel is ready.`
-                : `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\nEarn Telegram Stars easily and withdraw directly.`;
+            const politeStartText = 
+                `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\n` +
+                `Earn Telegram Stars easily and withdraw directly.`;
 
-            await sendMessage(chatId, politeStartText, isAdm ? getAdminMenu(isSuperAdmin(fromId)) : await getUserMenu(fromId));
+            await sendMessage(chatId, politeStartText, await getUserMenu(fromId));
             return;
         }
 
+        // অ্যাডমিন বাটনে চাপ দিলে অ্যাডমিন মেনু ওপেন হবে
         if (text === '🛠 Admin Panel' && isAdm) {
             await clearAdminState(fromId);
-            await sendMessage(chatId, "🛠 <b>Admin Panel</b>", getAdminMenu(isSuperAdmin(fromId)));
+            await sendMessage(chatId, "🛠 <b>Admin Panel Activated</b>", getAdminMenu(isSuperAdmin(fromId)));
             return;
         }
 
+        // ইউজার প্যানেলে ফিরে যাওয়ার বাটন
         if (text === '🔙 ইউজার প্যানেলে ফিরে যান') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
