@@ -1,24 +1,30 @@
 /*
 |--------------------------------------------------------------------------
 | STAR EARNING BOT FOR VERCEL (100% PRODUCTION READY & LAUNCH SAFE 🚀)
-| - Ultra-Fast Mobile Data (MB) + WiFi WebApp Engine (Zero Timeout)
+| - Updated with 'aura-star-pay' Firebase Database
+| - Ultra-Fast Mobile Data (MB) + WiFi WebApp Engine
 | - Smart Hardware Anti-Multi-Account (Admin Exempted, 1st User Safe)
 | - Compact Withdraw Alert with Claim 2 Star Button
-| - Separate Split Messages & Full Main Menu Protection
 |--------------------------------------------------------------------------
 */
 
 const crypto = require('crypto');
 
-const BOT_TOKEN = '8809628706:AAHyqVIoy_O1WJsP2Miu4rStSLE3UIjyK7E';
+// ⚠️ নিচের ### মুছে আপনার বটের আসল Token বসাবেন:
+const BOT_TOKEN = '###'; 
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-inky.vercel.app';
 const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
 
 const SUPER_ADMIN_ID = 8045367594;
 
-const FIREBASE_URL = 'https://star-fe264-default-rtdb.firebaseio.com';
-const FIREBASE_API_KEY = 'AIzaSyBfyhT9DHKYv5m6UtTnZF_lX0URts2Y9PM';
+/*
+|--------------------------------------------------------------------------
+| NEW FIREBASE CONFIGURATION (AURA-STAR-PAY)
+|--------------------------------------------------------------------------
+*/
+const FIREBASE_URL = 'https://aura-star-pay-default-rtdb.firebaseio.com';
+const FIREBASE_API_KEY = 'AIzaSyDq337oNcs6G7m3ahBnOhnHzgBhzr892GU';
 
 const FIREBASE_AUTH_EMAIL = 'sakib301210@gmail.com';
 const FIREBASE_AUTH_PASSWORD = '@mayabiri';
@@ -109,7 +115,7 @@ async function getFirebaseToken() {
         });
         if (!res.ok) return null;
         const data = await res.json();
-        if (!data || !data.idToken || String(data.localId) !== String(FIREBASE_AUTH_UID)) return null;
+        if (!data || !data.idToken) return null;
 
         cachedToken = data.idToken;
         tokenExpiresAt = now + Math.max(60, (parseInt(data.expiresIn) || 3600) - 60);
@@ -315,7 +321,7 @@ async function sendLongMessage(chatId, text, extra = null) {
 
 /*
 |--------------------------------------------------------------------------
-| ADMIN STATE MANAGEMENT
+| STATE MANAGEMENT
 |--------------------------------------------------------------------------
 */
 async function setAdminState(userId, action, extra = {}) {
@@ -636,7 +642,7 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SUBMISSION (ADMIN EXEMPTED & 1ST USER SAFE)
+| ANTI-MULTI-ACCOUNT SUBMISSION (HARDWARE-LEVEL VERIFICATION)
 |--------------------------------------------------------------------------
 */
 async function handleDeviceVerificationSubmit(req, res) {
@@ -648,7 +654,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(400).json({ success: false, message: 'Invalid payload' });
         }
 
-        // 1. Signature Verification
         const now = Math.floor(Date.now() / 1000);
         if (Math.abs(now - Number(t)) > 3600) {
             return res.status(403).json({ success: false, message: 'Session expired' });
@@ -657,7 +662,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(403).json({ success: false, message: 'Invalid signature' });
         }
 
-        // 2. Fetch User
         const user = await getUser(uid);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -671,7 +675,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
         }
 
-        // 3. Server-side Channel Join Check
         const joinedAll = await isUserJoinedAllChannels(uid);
         if (!joinedAll) {
             return res.status(400).json({ success: false, reason: 'CHANNEL_NOT_JOINED' });
@@ -679,13 +682,11 @@ async function handleDeviceVerificationSubmit(req, res) {
 
         const isUserAdmin = isSuperAdmin(uid) || (await isAdmin(uid));
 
-        // 4. IP Extraction
         const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '';
         const clientIp = rawIp.split(',')[0].trim();
         const ipHash = sha256(clientIp);
         const deviceTokenHash = sha256(device_token || hardware_id);
 
-        // 5. Anti-Multi-Account Database Check
         if (!isUserAdmin) {
             const registeredHardware = await firebaseRequest(`registered_hardware/${hardware_id}`);
             const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
@@ -693,7 +694,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             let isMultipleAccount = false;
             let originalVerifiedUser = null;
 
-            // অ্যাডমিনদের ডিভাইস রেকর্ড বাদ দিয়ে চেক করা যাতে অ্যাডমিন টেস্ট করলেও ইউজারের সমস্যা না হয়
             if (registeredHardware && String(registeredHardware.user_id) !== String(uid) && !registeredHardware.is_admin) {
                 isMultipleAccount = true;
                 originalVerifiedUser = registeredHardware.user_id;
@@ -703,7 +703,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             }
 
             if (isMultipleAccount) {
-                // শুধুমাত্র নতুন ২য় আইডি ব্লক হবে, আদি ১ম আইডি ১০০% সুরক্ষিত
                 await updateUser(uid, {
                     verification_status: 'multiple_account_blocked',
                     blocked_reason: `Same hardware detected as verified user ${originalVerifiedUser}`,
@@ -723,7 +722,6 @@ async function handleDeviceVerificationSubmit(req, res) {
                 return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
             }
 
-            // এই ১ম ইউজারের নামে ডিভাইস ও টোকেন রেজিস্টার করা
             await firebaseRequest(`registered_hardware/${hardware_id}`, 'PUT', {
                 user_id: String(uid),
                 is_admin: false,
@@ -736,7 +734,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             });
         }
 
-        // 6. Save User Verification Record
         await firebaseRequest(`user_verifications/${uid}`, 'PUT', {
             telegram_id: String(uid),
             username: String(user.username || ''),
@@ -767,7 +764,6 @@ async function handleDeviceVerificationSubmit(req, res) {
 
         await updateUser(uid, userUpdates);
 
-        // 7. Reward Referrer
         if (user.referred_by && !user.referral_rewarded) {
             const ref = await getUser(user.referred_by);
             if (ref && ref.verification_status === 'verified') {
@@ -781,7 +777,6 @@ async function handleDeviceVerificationSubmit(req, res) {
             }
         }
 
-        // 8. Telegram Bot Notifications
         const successMsg = 
             "✅ <b>Verification Successful</b>\n\n" +
             "Your Telegram account and device have been successfully verified.\n\n" +
@@ -801,7 +796,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM MINI APP (ZERO-TIMEOUT ULTRA-FAST ENGINE FOR MB & WIFI)
+| TELEGRAM MINI APP (ZERO-TIMEOUT FAST UI)
 |--------------------------------------------------------------------------
 */
 function renderMiniAppPage(uid, name, t, sig) {
@@ -980,7 +975,6 @@ function renderMiniAppPage(uid, name, t, sig) {
         <button id="actionBtn" class="action-btn btn-disabled">Awaiting Verification</button>
     </div>
 
-    <!-- Inline Telegram WebApp Loader for Zero Network Hanging -->
     <script>
         (function() {
             var script = document.createElement('script');
@@ -1052,10 +1046,8 @@ function renderMiniAppPage(uid, name, t, sig) {
             }
             document.cookie = "tg_device_token=" + deviceToken + "; path=/; max-age=31536000; SameSite=Lax";
 
-            // State 1 Delay
             await new Promise(function(r) { setTimeout(r, 1100); });
 
-            // State 2: Processing Device Fingerprint
             badgeEl.className = "status-badge processing";
             badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> PROCESSING";
             titleEl.innerText = "Analyzing Device";
@@ -1173,7 +1165,6 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // VERIFY JOINING (Channel Check -> Delete Message -> Send 2 Separate Messages)
         if (data === 'verify_join') {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -1196,7 +1187,7 @@ async function handleUpdate(update) {
                 const blockMsg = 
                     "🚫 <b>Multiple Account Detected</b>\n\n" +
                     "Multiple accounts are not allowed on the same device.\n\n" +
-                    "Your account could not be verified because another Telegram account is already verified on this device.\n\n" +
+                    "Your account could not be verified because another Telegram account is already verified from this device.\n\n" +
                     "If you believe this is a mistake, please contact support.";
                 await sendMessage(fromId, blockMsg, {
                     inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
@@ -1209,15 +1200,11 @@ async function handleUpdate(update) {
                 await deleteMessage(chatId, messageId);
             }
 
-            // মেসেজ ১: চ্যানেল ভেরিফিকেশন সফল বার্তা
             await sendMessage(chatId, "✅ <b>Channel Verification Successful</b>");
-
-            // মেসেজ ২: সম্পূর্ণ আলাদা ডিভাইস ভেরিফিকেশন মিনি-অ্যাপ
             await sendDeviceVerificationPrompt(chatId, fromId, callback.from.first_name);
             return;
         }
 
-        // LEADERBOARD
         if (data === 'leaderboard') {
             const users = await getAllUsers();
             const sortedUsers = Object.values(users)
@@ -1239,7 +1226,6 @@ async function handleUpdate(update) {
             return;
         }
 
-        // WITHDRAW ACTIONS
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
             if (!(await isAdmin(fromId))) {
@@ -1298,7 +1284,6 @@ async function handleUpdate(update) {
             }
         }
 
-        // ADMIN CALLBACK ACTIONS
         if (await isAdmin(fromId)) {
             if (data === 'admin_add' && isSuperAdmin(fromId)) {
                 await setAdminState(fromId, 'add_admin');
@@ -1467,7 +1452,6 @@ async function handleUpdate(update) {
             await setUser(fromId, user);
         }
 
-        // GLOBAL CANCEL
         if (text.toLowerCase() === '/cancel') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
@@ -1476,7 +1460,6 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ADMIN STATE INPUTS
         if (isAdm) {
             const aState = await getAdminState(fromId);
             if (aState && aState.action) {
@@ -1691,7 +1674,6 @@ async function handleUpdate(update) {
             }
         }
 
-        // USER STATE: WITHDRAWAL PROCESSING
         if (!isAdm) {
             const uState = await getUserState(fromId);
             if (uState && uState.action === 'withdraw_username') {
@@ -1823,7 +1805,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // START COMMAND (সবসময় ইউজার মোড মেনু দেখাবে)
+        // START COMMAND
         if (text.startsWith('/start')) {
             const politeStartText = 
                 `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\n` +
@@ -1925,7 +1907,6 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ADMIN BUTTONS
         if (isAdm) {
             if (text === '📊 পরিসংখ্যান') {
                 const users = await getAllUsers();
@@ -1996,7 +1977,7 @@ async function handleUpdate(update) {
 
 /*
 |--------------------------------------------------------------------------
-| VERCEL SERVERLESS ROUTER (WITH NO-CACHE ZERO TIMEOUT HEADERS)
+| VERCEL SERVERLESS ROUTER
 |--------------------------------------------------------------------------
 */
 module.exports = async (req, res) => {
@@ -2009,7 +1990,7 @@ module.exports = async (req, res) => {
         return res.status(200).send(renderMiniAppPage(uid, name, t, sig));
     }
 
-    // 2. Anti-Multi-Account WebApp Submission (POST from Webapp)
+    // 2. Anti-Multi-Account Submission (POST from Webapp)
     if (req.method === 'POST' && req.body && req.body.hardware_id) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         return await handleDeviceVerificationSubmit(req, res);
