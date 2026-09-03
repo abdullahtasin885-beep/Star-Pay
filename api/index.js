@@ -1,17 +1,18 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (100% PRODUCTION READY & LAUNCH SAFE 🚀)
-| - Updated with 'aura-star-pay' Firebase Database
-| - Ultra-Fast Mobile Data (MB) + WiFi WebApp Engine
-| - Smart Hardware Anti-Multi-Account (Admin Exempted, 1st User Safe)
-| - Compact Withdraw Alert with Claim 2 Star Button
+| AURA STAR PAY BOT (100% PRODUCTION READY & FINAL CODE 🚀)
+| - New Bot Token Integrated
+| - 'aura-star-pay' Firebase Realtime Database
+| - Native Telegram Mini App Anti-Multi-Account Security Scan
+| - Hardware-Level Protection (Admin Exempted, 1st User 100% Safe)
+| - Fixed Withdrawal & Compact Alert with 'Claim 2 Star' Button
+| - 2-Step Balance Add/Cut with Auto Notification
 |--------------------------------------------------------------------------
 */
 
 const crypto = require('crypto');
 
-// 
-const BOT_TOKEN = '8809628706:AAEHhxSmRzU20fdDdOAu2khXfh9haKde1MQ'; 
+const BOT_TOKEN = '8809628706:AAFZHcAMQzo6fdDshXW_qPI1FRuBJ03zPfg';
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-inky.vercel.app';
 const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
@@ -20,7 +21,7 @@ const SUPER_ADMIN_ID = 8045367594;
 
 /*
 |--------------------------------------------------------------------------
-| NEW FIREBASE CONFIGURATION (AURA-STAR-PAY)
+| FIREBASE CONFIGURATION (AURA-STAR-PAY)
 |--------------------------------------------------------------------------
 */
 const FIREBASE_URL = 'https://aura-star-pay-default-rtdb.firebaseio.com';
@@ -374,7 +375,7 @@ async function isAdmin(userId) {
 |--------------------------------------------------------------------------
 */
 async function getUserMenu(userId) {
-    const isAdm = await isAdmin(userId);
+    const isAdm = isSuperAdmin(userId) || (await isAdmin(userId));
     const keyboard = [
         [{ text: '👤 My Account' }, { text: '👥 Refer & Earn' }],
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
@@ -642,7 +643,7 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SUBMISSION (HARDWARE-LEVEL VERIFICATION)
+| ANTI-MULTI-ACCOUNT SUBMISSION (ADMIN EXEMPTED & 1ST USER SAFE)
 |--------------------------------------------------------------------------
 */
 async function handleDeviceVerificationSubmit(req, res) {
