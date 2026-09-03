@@ -10,8 +10,8 @@
 
 const crypto = require('crypto');
 
-const BOT_TOKEN = '8852283670:AAFnBJlS7mnNh6NIglslOGzNFj8OEZoMEB0';
-const BOT_USERNAME = 'AS_Star_Eran_Bot';
+const BOT_TOKEN = '8809628706:AAHyqVIoy_O1WJsP2Miu4rStSLE3UIjyK7E';
+const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-inky.vercel.app';
 const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
 
