@@ -1,6 +1,13 @@
 {
   "name": "telegram-star-bot",
   "version": "1.0.0",
-  "main": "api/index.js",
-  "dependencies": {}
+  "description": "Telegram Star Bot 24/7 Mobile & WiFi Compatible",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
 }
