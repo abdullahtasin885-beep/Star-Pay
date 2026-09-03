@@ -1,9 +1,10 @@
 /*
 |--------------------------------------------------------------------------
-| STAR EARNING BOT FOR VERCEL (100% SECURE MULTI-ACCOUNT PROTECTION)
-| - Original Device Account Safe (Only New Duplicate Blocked)
-| - Admin Starts in User Mode with Admin Panel Switch
-| - Instant Auto-Notification to Target User on Balance Add/Deduct
+| STAR EARNING BOT FOR VERCEL (100% PRODUCTION READY & LAUNCH SAFE 🚀)
+| - Ultra-Fast Mobile Data (MB) + WiFi WebApp Engine (Zero Timeout)
+| - Smart Hardware Anti-Multi-Account (Admin Exempted, 1st User Safe)
+| - Compact Withdraw Alert with Claim 2 Star Button
+| - Separate Split Messages & Full Main Menu Protection
 |--------------------------------------------------------------------------
 */
 
@@ -25,7 +26,7 @@ const FIREBASE_AUTH_UID = 'WUVFzcS2jvXDXgGfUAQPl9ESl943';
 
 /*
 |--------------------------------------------------------------------------
-| HELPERS & CRYPTOGRAPHY
+| BASIC HELPERS & CRYPTOGRAPHY
 |--------------------------------------------------------------------------
 */
 function escapeHtml(text) {
@@ -145,7 +146,7 @@ async function firebaseRequest(path, method = 'GET', data = null) {
 
 /*
 |--------------------------------------------------------------------------
-| DATABASE METHODS
+| DATABASE HELPERS
 |--------------------------------------------------------------------------
 */
 async function getUser(userId) {
@@ -314,7 +315,7 @@ async function sendLongMessage(chatId, text, extra = null) {
 
 /*
 |--------------------------------------------------------------------------
-| STATE MANAGEMENT
+| ADMIN STATE MANAGEMENT
 |--------------------------------------------------------------------------
 */
 async function setAdminState(userId, action, extra = {}) {
@@ -373,7 +374,6 @@ async function getUserMenu(userId) {
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
         [{ text: '🎁 Gift Code' }]
     ];
-    // এডমিন আইডি হলে নিচে এডমিন প্যানেলে যাওয়ার বাটন থাকবে
     if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
@@ -636,13 +636,13 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SUBMISSION (STRICT - ONLY NEW DUPLICATE BLOCKED)
+| ANTI-MULTI-ACCOUNT SUBMISSION (ADMIN EXEMPTED & 1ST USER SAFE)
 |--------------------------------------------------------------------------
 */
 async function handleDeviceVerificationSubmit(req, res) {
     try {
         const body = req.body || {};
-        const { uid, t, sig, device_token, hardware_id, fingerprint } = body;
+        const { uid, t, sig, device_token, hardware_id } = body;
 
         if (!uid || !t || !sig || !hardware_id) {
             return res.status(400).json({ success: false, message: 'Invalid payload' });
@@ -650,14 +650,14 @@ async function handleDeviceVerificationSubmit(req, res) {
 
         // 1. Signature Verification
         const now = Math.floor(Date.now() / 1000);
-        if (Math.abs(now - Number(t)) > 1800) {
+        if (Math.abs(now - Number(t)) > 3600) {
             return res.status(403).json({ success: false, message: 'Session expired' });
         }
         if (!verifySignature(uid, t, sig)) {
             return res.status(403).json({ success: false, message: 'Invalid signature' });
         }
 
-        // 2. Fetch Current Attempting User
+        // 2. Fetch User
         const user = await getUser(uid);
         if (!user) {
             return res.status(404).json({ success: false, message: 'User not found' });
@@ -677,59 +677,66 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(400).json({ success: false, reason: 'CHANNEL_NOT_JOINED' });
         }
 
+        const isUserAdmin = isSuperAdmin(uid) || (await isAdmin(uid));
+
         // 4. IP Extraction
         const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '';
         const clientIp = rawIp.split(',')[0].trim();
         const ipHash = sha256(clientIp);
         const deviceTokenHash = sha256(device_token || hardware_id);
 
-        // 5. Check Strict Registered Hardware & Device Tokens
-        const registeredHardware = await firebaseRequest(`registered_hardware/${hardware_id}`);
-        const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
+        // 5. Anti-Multi-Account Database Check
+        if (!isUserAdmin) {
+            const registeredHardware = await firebaseRequest(`registered_hardware/${hardware_id}`);
+            const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
 
-        let isMultipleAccount = false;
-        let originalVerifiedUser = null;
+            let isMultipleAccount = false;
+            let originalVerifiedUser = null;
 
-        if (registeredHardware && String(registeredHardware.user_id) !== String(uid)) {
-            isMultipleAccount = true;
-            originalVerifiedUser = registeredHardware.user_id;
-        } else if (registeredToken && String(registeredToken.user_id) !== String(uid)) {
-            isMultipleAccount = true;
-            originalVerifiedUser = registeredToken.user_id;
+            // অ্যাডমিনদের ডিভাইস রেকর্ড বাদ দিয়ে চেক করা যাতে অ্যাডমিন টেস্ট করলেও ইউজারের সমস্যা না হয়
+            if (registeredHardware && String(registeredHardware.user_id) !== String(uid) && !registeredHardware.is_admin) {
+                isMultipleAccount = true;
+                originalVerifiedUser = registeredHardware.user_id;
+            } else if (registeredToken && String(registeredToken.user_id) !== String(uid) && !registeredToken.is_admin) {
+                isMultipleAccount = true;
+                originalVerifiedUser = registeredToken.user_id;
+            }
+
+            if (isMultipleAccount) {
+                // শুধুমাত্র নতুন ২য় আইডি ব্লক হবে, আদি ১ম আইডি ১০০% সুরক্ষিত
+                await updateUser(uid, {
+                    verification_status: 'multiple_account_blocked',
+                    blocked_reason: `Same hardware detected as verified user ${originalVerifiedUser}`,
+                    is_verified: false,
+                    updated_at: now
+                });
+
+                const blockMsg = 
+                    "🚫 <b>Multiple Account Detected</b>\n\n" +
+                    "Multiple accounts are not allowed on the same device.\n\n" +
+                    "Your account could not be verified because another Telegram account is already verified on this device.\n\n" +
+                    "If you believe this is a mistake, please contact support.";
+                await sendMessage(uid, blockMsg, {
+                    inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
+                });
+
+                return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
+            }
+
+            // এই ১ম ইউজারের নামে ডিভাইস ও টোকেন রেজিস্টার করা
+            await firebaseRequest(`registered_hardware/${hardware_id}`, 'PUT', {
+                user_id: String(uid),
+                is_admin: false,
+                created_at: now
+            });
+            await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', {
+                user_id: String(uid),
+                is_admin: false,
+                created_at: now
+            });
         }
 
-        if (isMultipleAccount) {
-            // শুধুমাত্র নতুন একাউন্টটি ব্লক হবে। আদি/আগের ভেরিফাইড একাউন্ট ১০০% অক্ষত থাকবে।
-            await updateUser(uid, {
-                verification_status: 'multiple_account_blocked',
-                blocked_reason: `Same hardware detected as verified user ${originalVerifiedUser}`,
-                is_verified: false,
-                updated_at: now
-            });
-
-            const blockMsg = 
-                "🚫 <b>Multiple Account Detected</b>\n\n" +
-                "Multiple accounts are not allowed on the same device.\n\n" +
-                "Your account could not be verified because another Telegram account is already verified on this device.\n\n" +
-                "If you believe this is a mistake, please contact support.";
-            await sendMessage(uid, blockMsg, {
-                inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
-            });
-
-            return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
-        }
-
-        // 6. Register Hardware & Device Token to this First User
-        await firebaseRequest(`registered_hardware/${hardware_id}`, 'PUT', {
-            user_id: String(uid),
-            created_at: now
-        });
-        await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', {
-            user_id: String(uid),
-            created_at: now
-        });
-
-        // 7. Save User Verification Record
+        // 6. Save User Verification Record
         await firebaseRequest(`user_verifications/${uid}`, 'PUT', {
             telegram_id: String(uid),
             username: String(user.username || ''),
@@ -760,7 +767,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
         await updateUser(uid, userUpdates);
 
-        // 8. Reward Referrer
+        // 7. Reward Referrer
         if (user.referred_by && !user.referral_rewarded) {
             const ref = await getUser(user.referred_by);
             if (ref && ref.verification_status === 'verified') {
@@ -774,7 +781,7 @@ async function handleDeviceVerificationSubmit(req, res) {
             }
         }
 
-        // 9. Send Telegram Success & Main Menu
+        // 8. Telegram Bot Notifications
         const successMsg = 
             "✅ <b>Verification Successful</b>\n\n" +
             "Your Telegram account and device have been successfully verified.\n\n" +
@@ -794,7 +801,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM MINI APP UI (EXACT SCREENSHOT MATCH)
+| TELEGRAM MINI APP (ZERO-TIMEOUT ULTRA-FAST ENGINE FOR MB & WIFI)
 |--------------------------------------------------------------------------
 */
 function renderMiniAppPage(uid, name, t, sig) {
@@ -804,10 +811,10 @@ function renderMiniAppPage(uid, name, t, sig) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>START BOT INC</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: #070d18; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; overflow: hidden; }
         
         .main-card {
@@ -860,15 +867,9 @@ function renderMiniAppPage(uid, name, t, sig) {
             border-radius: 20px;
             font-size: 12px;
             font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 6px;
         }
 
         .status-badge {
-            background: rgba(59, 130, 246, 0.15);
-            color: #60a5fa;
-            border: 1px solid rgba(59, 130, 246, 0.3);
             padding: 5px 16px;
             border-radius: 20px;
             font-size: 11px;
@@ -881,10 +882,10 @@ function renderMiniAppPage(uid, name, t, sig) {
             margin-bottom: 30px;
         }
 
-        .status-badge.scanning { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3); }
-        .status-badge.processing { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border-color: rgba(6, 182, 212, 0.3); }
-        .status-badge.verified { background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3); }
-        .status-badge.blocked { background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
+        .status-badge.scanning { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .status-badge.processing { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
+        .status-badge.verified { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .status-badge.blocked { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
 
         .circle-icon-wrapper {
             width: 120px;
@@ -979,70 +980,80 @@ function renderMiniAppPage(uid, name, t, sig) {
         <button id="actionBtn" class="action-btn btn-disabled">Awaiting Verification</button>
     </div>
 
+    <!-- Inline Telegram WebApp Loader for Zero Network Hanging -->
     <script>
-        const tg = window.Telegram?.WebApp;
-        if (tg) {
-            tg.ready();
-            tg.expand();
-        }
+        (function() {
+            var script = document.createElement('script');
+            script.src = "https://telegram.org/js/telegram-web-app.js";
+            script.async = true;
+            document.head.appendChild(script);
+        })();
 
         async function sha256Browser(str) {
-            const buffer = new TextEncoder().encode(str);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            try {
+                var buffer = new TextEncoder().encode(str);
+                var hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+                return Array.from(new Uint8Array(hashBuffer)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+            } catch(e) {
+                return 'h_' + btoa(str).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+            }
         }
 
         function getGPU() {
             try {
-                const canvas = document.createElement('canvas');
-                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                var canvas = document.createElement('canvas');
+                var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                 if (!gl) return 'no-webgl';
-                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                return debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'gl-generic';
-            } catch {
+                var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                return debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'gl-renderer';
+            } catch(e) {
                 return 'unknown-gpu';
             }
         }
 
         function getCanvasHash() {
             try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 240;
-                canvas.height = 60;
-                const ctx = canvas.getContext('2d');
+                var canvas = document.createElement('canvas');
+                canvas.width = 200;
+                canvas.height = 50;
+                var ctx = canvas.getContext('2d');
                 ctx.textBaseline = "alphabetic";
                 ctx.fillStyle = "#f60";
-                ctx.fillRect(100, 5, 80, 30);
+                ctx.fillRect(80, 5, 70, 25);
                 ctx.fillStyle = "#069";
-                ctx.font = "15px 'Arial'";
-                ctx.fillText("StarBotSecurity,1122", 4, 17);
-                ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-                ctx.fillText("StarBotSecurity,1122", 6, 19);
+                ctx.font = "14px 'Arial'";
+                ctx.fillText("StarBotSecurity,1122", 4, 16);
                 return canvas.toDataURL();
-            } catch {
-                return 'canvas-error';
+            } catch(e) {
+                return 'canvas-na';
             }
         }
 
         async function startVerification() {
-            const badgeEl = document.getElementById('badgeEl');
-            const iconWrapper = document.getElementById('iconWrapper');
-            const iconEl = document.getElementById('iconEl');
-            const titleEl = document.getElementById('titleEl');
-            const subEl = document.getElementById('subEl');
-            const actionBtn = document.getElementById('actionBtn');
+            var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+            if (tg) {
+                try { tg.ready(); tg.expand(); } catch(e) {}
+            }
 
-            let deviceToken = localStorage.getItem('tg_device_token') || sessionStorage.getItem('tg_device_token');
+            var badgeEl = document.getElementById('badgeEl');
+            var iconWrapper = document.getElementById('iconWrapper');
+            var iconEl = document.getElementById('iconEl');
+            var titleEl = document.getElementById('titleEl');
+            var subEl = document.getElementById('subEl');
+            var actionBtn = document.getElementById('actionBtn');
+
+            var deviceToken = localStorage.getItem('tg_device_token') || sessionStorage.getItem('tg_device_token');
             if (!deviceToken) {
                 deviceToken = 'dt_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-                localStorage.setItem('tg_device_token', deviceToken);
-                sessionStorage.setItem('tg_device_token', deviceToken);
+                try {
+                    localStorage.setItem('tg_device_token', deviceToken);
+                    sessionStorage.setItem('tg_device_token', deviceToken);
+                } catch(e) {}
             }
             document.cookie = "tg_device_token=" + deviceToken + "; path=/; max-age=31536000; SameSite=Lax";
 
-            // State 1: 1.2s delay for visual scanning
-            await new Promise(r => setTimeout(r, 1200));
+            // State 1 Delay
+            await new Promise(function(r) { setTimeout(r, 1100); });
 
             // State 2: Processing Device Fingerprint
             badgeEl.className = "status-badge processing";
@@ -1052,39 +1063,38 @@ function renderMiniAppPage(uid, name, t, sig) {
             iconEl.setAttribute('stroke', '#22d3ee');
             iconEl.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m-2 6h2m14-6h2m-2 6h2M7 5h10a2 2 0 012 2v10a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2zM9 9h6v6H9V9z"/>';
 
-            const gpu = getGPU();
-            const canvasData = getCanvasHash();
-            const screenData = screen.width + "x" + screen.height + "x" + screen.colorDepth + "@" + (window.devicePixelRatio || 1);
-            const cores = navigator.hardwareConcurrency || 1;
-            const touchPoints = navigator.maxTouchPoints || 0;
-            const platform = navigator.platform || '';
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+            var gpu = getGPU();
+            var canvasData = getCanvasHash();
+            var screenData = screen.width + "x" + screen.height + "x" + screen.colorDepth + "@" + (window.devicePixelRatio || 1);
+            var cores = navigator.hardwareConcurrency || 1;
+            var touchPoints = navigator.maxTouchPoints || 0;
+            var platform = navigator.platform || '';
+            var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
 
-            const rawHardware = [gpu, canvasData, screenData, cores, touchPoints, platform, timezone].join('|||');
-            const hardwareId = await sha256Browser(rawHardware);
+            var rawHardware = [gpu, canvasData, screenData, cores, touchPoints, platform, timezone].join('|||');
+            var hardwareId = await sha256Browser(rawHardware);
 
-            const payload = {
+            var payload = {
                 uid: "${uid}",
                 t: "${t}",
                 sig: "${sig}",
                 device_token: deviceToken,
                 hardware_id: hardwareId,
-                fingerprint: { gpu, screen: screenData, cores, platform, timezone }
+                fingerprint: { gpu: gpu, screen: screenData, cores: cores, platform: platform, timezone: timezone }
             };
 
             try {
-                const res = await fetch('${APP_URL}/api/index', {
+                var res = await fetch('${APP_URL}/api/index', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                const data = await res.json();
+                var data = await res.json();
 
-                await new Promise(r => setTimeout(r, 900));
+                await new Promise(function(r) { setTimeout(r, 800); });
                 iconWrapper.classList.remove('pulse');
 
                 if (data.success) {
-                    // State 3: Success
                     badgeEl.className = "status-badge verified";
                     badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> VERIFIED";
                     titleEl.innerText = "Verification Complete";
@@ -1094,12 +1104,14 @@ function renderMiniAppPage(uid, name, t, sig) {
                     
                     actionBtn.className = "action-btn btn-active";
                     actionBtn.innerText = "Return To Bot";
-                    actionBtn.onclick = () => {
-                        if (tg) { tg.close(); }
-                        else { window.location.href = "https://t.me/${BOT_USERNAME}"; }
+                    actionBtn.onclick = function() {
+                        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.close) {
+                            window.Telegram.WebApp.close();
+                        } else {
+                            window.location.href = "https://t.me/${BOT_USERNAME}";
+                        }
                     };
                 } else if (data.reason === 'MULTIPLE_ACCOUNT_BLOCKED') {
-                    // State 4: Multiple Account Blocked
                     badgeEl.className = "status-badge blocked";
                     badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> BLOCKED";
                     titleEl.innerText = "Multiple Account Detected";
@@ -1109,7 +1121,7 @@ function renderMiniAppPage(uid, name, t, sig) {
 
                     actionBtn.className = "action-btn btn-danger";
                     actionBtn.innerText = "Contact Support";
-                    actionBtn.onclick = () => {
+                    actionBtn.onclick = function() {
                         window.location.href = "https://t.me/${SUPPORT_USERNAME}";
                     };
                 } else {
@@ -1117,26 +1129,32 @@ function renderMiniAppPage(uid, name, t, sig) {
                     badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> ERROR";
                     titleEl.innerText = "Channel Join Required";
                     subEl.innerText = data.message || "Please join all required channels first.";
-                    
                     actionBtn.className = "action-btn btn-active";
                     actionBtn.innerText = "Return To Bot";
-                    actionBtn.onclick = () => {
-                        if (tg) { tg.close(); }
-                        else { window.location.href = "https://t.me/${BOT_USERNAME}"; }
+                    actionBtn.onclick = function() {
+                        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.close) {
+                            window.Telegram.WebApp.close();
+                        } else {
+                            window.location.href = "https://t.me/${BOT_USERNAME}";
+                        }
                     };
                 }
-            } catch {
+            } catch(e) {
                 badgeEl.className = "status-badge blocked";
-                badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> FAILED";
+                badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> RETRY";
                 titleEl.innerText = "Connection Error";
-                subEl.innerText = "Please check your internet and try again.";
+                subEl.innerText = "Please check your network and try again.";
                 actionBtn.className = "action-btn btn-active";
-                actionBtn.innerText = "Retry in Telegram";
-                actionBtn.onclick = () => { if (tg) tg.close(); };
+                actionBtn.innerText = "Retry Scan";
+                actionBtn.onclick = function() { window.location.reload(); };
             }
         }
 
-        window.onload = startVerification;
+        if (document.readyState === 'complete') {
+            startVerification();
+        } else {
+            window.addEventListener('load', startVerification);
+        }
     </script>
 </body>
 </html>`;
@@ -1155,7 +1173,7 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // VERIFY JOINING (Channel Check -> Clean Delete -> Send 2 Separate Messages)
+        // VERIFY JOINING (Channel Check -> Delete Message -> Send 2 Separate Messages)
         if (data === 'verify_join') {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -1178,7 +1196,7 @@ async function handleUpdate(update) {
                 const blockMsg = 
                     "🚫 <b>Multiple Account Detected</b>\n\n" +
                     "Multiple accounts are not allowed on the same device.\n\n" +
-                    "Your account could not be verified because another Telegram account is already verified from this device.\n\n" +
+                    "Your account could not be verified because another Telegram account is already verified on this device.\n\n" +
                     "If you believe this is a mistake, please contact support.";
                 await sendMessage(fromId, blockMsg, {
                     inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
@@ -1186,7 +1204,6 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // চ্যানেল ভেরিফাই সফল -> আগের মেসেজ ডিলিট
             await answerCallback(callback.id);
             if (chatId && messageId) {
                 await deleteMessage(chatId, messageId);
@@ -1195,7 +1212,7 @@ async function handleUpdate(update) {
             // মেসেজ ১: চ্যানেল ভেরিফিকেশন সফল বার্তা
             await sendMessage(chatId, "✅ <b>Channel Verification Successful</b>");
 
-            // মেসেজ ২: আলাদা ডিভাইস ভেরিফিকেশন মিনি-অ্যাপ
+            // মেসেজ ২: সম্পূর্ণ আলাদা ডিভাইস ভেরিফিকেশন মিনি-অ্যাপ
             await sendDeviceVerificationPrompt(chatId, fromId, callback.from.first_name);
             return;
         }
@@ -1428,7 +1445,7 @@ async function handleUpdate(update) {
         const fromId = String(msg.from.id);
         const chatId = String(msg.chat.id);
         const text = normalizeText(msg.text);
-        const isAdm = await isAdmin(fromId);
+        const isAdm = isSuperAdmin(fromId) || (await isAdmin(fromId));
 
         let user = await getUser(fromId);
         if (!user) {
@@ -1443,8 +1460,8 @@ async function handleUpdate(update) {
                 username: msg.from.username || '',
                 balance: 0,
                 referred_by: refBy,
-                verification_status: 'pending_channel',
-                is_verified: false,
+                verification_status: isAdm ? 'verified' : 'pending_channel',
+                is_verified: isAdm,
                 created_at: Math.floor(Date.now() / 1000)
             };
             await setUser(fromId, user);
@@ -1518,7 +1535,6 @@ async function handleUpdate(update) {
                     return;
                 }
 
-                // ব্যালেন্স অ্যাড: ধাপ ১
                 if (action === 'add_balance_user') {
                     if (!/^\d+$/.test(text)) {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID পাঠান:", getCancelKeyboard());
@@ -1538,7 +1554,6 @@ async function handleUpdate(update) {
                     return;
                 }
 
-                // ব্যালেন্স অ্যাড: ধাপ ২ (অটো মেসেজ সহ)
                 if (action === 'add_balance_amount') {
                     if (!isNumericAmount(text) || Number(text) <= 0) {
                         await sendMessage(chatId, "❌ সঠিক Amount দিন:", getCancelKeyboard());
@@ -1553,7 +1568,6 @@ async function handleUpdate(update) {
                         await clearAdminState(fromId);
                         await sendMessage(chatId, `✅ <b>Added +${formatNumber(amt)} ⭐</b>\n💰 New Balance: <b>${formatNumber(newBal)} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
                         
-                        // টার্গেট ইউজারের কাছে অটো নোটিফিকেশন মেসেজ
                         try {
                             await sendMessage(targetId, `🎁 <b>আপনার অ্যাকাউন্টে +${formatNumber(amt)} STAR যোগ করা হয়েছে!</b>\n💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} STAR ⭐</b>`);
                         } catch {}
@@ -1561,7 +1575,6 @@ async function handleUpdate(update) {
                     return;
                 }
 
-                // ব্যালেন্স কাট: ধাপ ১
                 if (action === 'cut_balance_user') {
                     if (!/^\d+$/.test(text)) {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID পাঠান:", getCancelKeyboard());
@@ -1581,7 +1594,6 @@ async function handleUpdate(update) {
                     return;
                 }
 
-                // ব্যালেন্স কাট: ধাপ ২ (অটো মেসেজ সহ)
                 if (action === 'cut_balance_amount') {
                     if (!isNumericAmount(text) || Number(text) <= 0) {
                         await sendMessage(chatId, "❌ সঠিক Amount দিন:", getCancelKeyboard());
@@ -1597,7 +1609,6 @@ async function handleUpdate(update) {
                         await clearAdminState(fromId);
                         await sendMessage(chatId, `✅ <b>Deducted -${formatNumber(amt)} ⭐</b>\n💰 New Balance: <b>${formatNumber(newBal)} ⭐</b>`, getAdminMenu(isSuperAdmin(fromId)));
                         
-                        // টার্গেট ইউজারের কাছে অটো নোটিফিকেশন মেসেজ
                         try {
                             await sendMessage(targetId, `⚠️ <b>আপনার অ্যাকাউন্ট থেকে -${formatNumber(amt)} STAR কাটা হয়েছে!</b>\n💰 বর্তমান ব্যালেন্স: <b>${formatNumber(newBal)} STAR ⭐</b>`);
                         } catch {}
@@ -1822,14 +1833,12 @@ async function handleUpdate(update) {
             return;
         }
 
-        // অ্যাডমিন বাটনে চাপ দিলে অ্যাডমিন মেনু ওপেন হবে
         if (text === '🛠 Admin Panel' && isAdm) {
             await clearAdminState(fromId);
             await sendMessage(chatId, "🛠 <b>Admin Panel Activated</b>", getAdminMenu(isSuperAdmin(fromId)));
             return;
         }
 
-        // ইউজার প্যানেলে ফিরে যাওয়ার বাটন
         if (text === '🔙 ইউজার প্যানেলে ফিরে যান') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
@@ -1987,7 +1996,7 @@ async function handleUpdate(update) {
 
 /*
 |--------------------------------------------------------------------------
-| VERCEL SERVERLESS ROUTER
+| VERCEL SERVERLESS ROUTER (WITH NO-CACHE ZERO TIMEOUT HEADERS)
 |--------------------------------------------------------------------------
 */
 module.exports = async (req, res) => {
@@ -1995,11 +2004,14 @@ module.exports = async (req, res) => {
     if (req.method === 'GET' && req.query.action === 'verify_flow') {
         const { uid, name, t, sig } = req.query;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        res.setHeader('Access-Control-Allow-Origin', '*');
         return res.status(200).send(renderMiniAppPage(uid, name, t, sig));
     }
 
     // 2. Anti-Multi-Account WebApp Submission (POST from Webapp)
     if (req.method === 'POST' && req.body && req.body.hardware_id) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
         return await handleDeviceVerificationSubmit(req, res);
     }
 
