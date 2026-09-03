@@ -10,8 +10,8 @@
 
 const crypto = require('crypto');
 
-// ⚠️ নিচের ### মুছে আপনার বটের আসল Token বসাবেন:
-const BOT_TOKEN = '###'; 
+// 
+const BOT_TOKEN = '8809628706:AAEHhxSmRzU20fdDdOAu2khXfh9haKde1MQ'; 
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-inky.vercel.app';
 const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
