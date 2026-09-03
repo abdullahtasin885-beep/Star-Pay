@@ -1,22 +1,24 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (100% TESTED & ROCK-SOLID LAUNCH VERSION 🚀)
-| - Fixed Admin State Input Handling (All Admin IDs Supported)
-| - Ultra-Resilient Firebase Connection with Auto-Fallback
-| - Hardware-Level Anti-Multi-Account (Admins Exempted, 1st User Safe)
+| AURA STAR PAY BOT (100% PRODUCTION READY & STRICT ADMIN SECURITY 🔒)
+| - Super Admin: 8045367594
+| - Admin Panel strictly hidden from normal users
+| - 'aura-star-pay' Firebase Realtime Database
+| - Native Telegram Mini App Anti-Multi-Account Security Scan
 | - Fixed Withdrawal & Compact Alert with 'Claim 2 Star' Button
+| - 2-Step Balance Add/Cut with Auto-Notification
 |--------------------------------------------------------------------------
 */
 
 const crypto = require('crypto');
 
-const BOT_TOKEN = '8809628706:AAFZHcAMQzo6fdDshXW_qPI1FRuBJ03zPfg';
+const BOT_TOKEN = '8809628706:AAHXWBZ4k10qQjmZexV_SE-mTPHysJXgIEo';
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-inky.vercel.app';
-const SUPPORT_USERNAME = 'Sakib_Developer1';
+const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
 
-// আপনার সকল অ্যাডমিন আইডি এখানে যুক্ত করা হয়েছে
-const SUPER_ADMIN_IDS = ['8045367594', '8556706931'];
+// শুধুমাত্র আপনার নির্দিষ্ট সুপার অ্যাডমিন আইডি
+const SUPER_ADMIN_ID = 8045367594;
 
 /*
 |--------------------------------------------------------------------------
@@ -92,7 +94,7 @@ function verifySignature(userId, timestamp, signature) {
 
 /*
 |--------------------------------------------------------------------------
-| FIREBASE AUTH & RESILIENT REST API
+| FIREBASE AUTH & REST API
 |--------------------------------------------------------------------------
 */
 let cachedToken = null;
@@ -144,7 +146,6 @@ async function firebaseRequest(path, method = 'GET', data = null) {
     try {
         let res = await fetch(url, options);
         if (!res.ok && token && (res.status === 401 || res.status === 403)) {
-            // Fallback without auth param if rules are open
             const fallbackUrl = `${FIREBASE_URL.replace(/\/+$/, '')}/${path}.json`;
             res = await fetch(fallbackUrl, options);
         }
@@ -328,7 +329,7 @@ async function sendLongMessage(chatId, text, extra = null) {
 
 /*
 |--------------------------------------------------------------------------
-| STATE MANAGEMENT
+| STRICT ADMIN & STATE MANAGEMENT
 |--------------------------------------------------------------------------
 */
 async function setAdminState(userId, action, extra = {}) {
@@ -366,13 +367,16 @@ async function clearUserState(userId) {
 }
 
 function isSuperAdmin(userId) {
-    return SUPER_ADMIN_IDS.includes(String(userId));
+    return String(userId).trim() === String(SUPER_ADMIN_ID);
 }
 
 async function isAdmin(userId) {
-    if (isSuperAdmin(userId)) return true;
-    const admin = await firebaseRequest(`admins/${userId}`);
-    return Boolean(admin && typeof admin === 'object' && admin.active);
+    const uidStr = String(userId).trim();
+    if (isSuperAdmin(uidStr)) return true;
+    
+    // ডাটাবেজে এই অ্যাডমিন সক্রিয় আছে কিনা নিখুঁত যাচাই
+    const admin = await firebaseRequest(`admins/${uidStr}`);
+    return Boolean(admin && typeof admin === 'object' && admin.active === true);
 }
 
 /*
@@ -381,13 +385,18 @@ async function isAdmin(userId) {
 |--------------------------------------------------------------------------
 */
 async function getUserMenu(userId) {
-    const isAdm = isSuperAdmin(userId) || (await isAdmin(userId));
+    const isAdm = await isAdmin(userId);
     const keyboard = [
         [{ text: '👤 My Account' }, { text: '👥 Refer & Earn' }],
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
         [{ text: '🎁 Gift Code' }]
     ];
-    if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
+    
+    // শুধুমাত্র অনুমোদিত অ্যাডমিন হলেই '🛠 Admin Panel' বাটন শো করবে
+    if (isAdm) {
+        keyboard.push([{ text: '🛠 Admin Panel' }]);
+    }
+    
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
@@ -803,7 +812,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM MINI APP (FAST UI)
+| TELEGRAM MINI APP UI
 |--------------------------------------------------------------------------
 */
 function renderMiniAppPage(uid, name, t, sig) {
@@ -1291,6 +1300,7 @@ async function handleUpdate(update) {
             }
         }
 
+        // STRICT ADMIN CALLBACKS
         if (await isAdmin(fromId)) {
             if (data === 'admin_add' && isSuperAdmin(fromId)) {
                 await setAdminState(fromId, 'add_admin');
@@ -1306,12 +1316,10 @@ async function handleUpdate(update) {
             }
             if (data === 'admin_list' && isSuperAdmin(fromId)) {
                 const admins = await getAllAdmins();
-                let list = `👮 <b>এডমিন তালিকা</b>\n━━━━━━━━━━━━━━━━━━\n\n👑 <b>Super Admins</b>\n`;
-                SUPER_ADMIN_IDS.forEach(id => { list += `• <code>${id}</code>\n`; });
-                list += `\n👮 <b>অন্যান্য Admin</b>\n`;
+                let list = `👮 <b>এডমিন তালিকা</b>\n━━━━━━━━━━━━━━━━━━\n\n👑 <b>Super Admin</b>\n• <code>${SUPER_ADMIN_ID}</code>\n\n👮 <b>অন্যান্য Admin</b>\n`;
                 let has = false;
                 for (const [aId, a] of Object.entries(admins)) {
-                    if (a && a.active) { has = true; list += `\n• <code>${escapeHtml(aId)}</code>`; }
+                    if (a && a.active) { has = true; list += `• <code>${escapeHtml(aId)}</code>\n`; }
                 }
                 if (!has) list += "কোনো অতিরিক্ত Admin নেই।";
                 await answerCallback(callback.id, 'Loaded');
@@ -1436,10 +1444,10 @@ async function handleUpdate(update) {
 
     if (update.message && update.message.text) {
         const msg = update.message;
-        const fromId = String(msg.from.id);
+        const fromId = String(msg.from.id).trim();
         const chatId = String(msg.chat.id);
         const text = normalizeText(msg.text);
-        const isAdm = isSuperAdmin(fromId) || (await isAdmin(fromId));
+        const isAdm = await isAdmin(fromId);
 
         let user = await getUser(fromId);
         if (!user) {
@@ -1469,7 +1477,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ADMIN STATE INPUTS (100% FIXED & ROBUST)
+        // ADMIN STATE INPUTS
         if (isAdm) {
             const aState = await getAdminState(fromId);
             if (aState && aState.action) {
@@ -1832,7 +1840,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // START COMMAND
+        // START COMMAND (সবসময় ইউজার মোড মেনু দেখাবে)
         if (text.startsWith('/start')) {
             const politeStartText = 
                 `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\n` +
@@ -1842,12 +1850,18 @@ async function handleUpdate(update) {
             return;
         }
 
-        if (text === '🛠 Admin Panel' && isAdm) {
+        // অ্যাডমিন বাটনে চাপ দিলে অ্যাডমিন মেনু ওপেন হবে
+        if (text === '🛠 Admin Panel') {
+            if (!isAdm) {
+                await sendMessage(chatId, "⛔ <b>Access Denied!</b>\n\nএই প্যানেলটি শুধুমাত্র অনুমোদিত অ্যাডমিনের জন্য।", await getUserMenu(fromId));
+                return;
+            }
             await clearAdminState(fromId);
             await sendMessage(chatId, "🛠 <b>Admin Panel Activated</b>", getAdminMenu(isSuperAdmin(fromId)));
             return;
         }
 
+        // ইউজার প্যানেলে ফিরে যাওয়ার বাটন
         if (text === '🔙 ইউজার প্যানেলে ফিরে যান') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
@@ -2008,7 +2022,6 @@ async function handleUpdate(update) {
 |--------------------------------------------------------------------------
 */
 module.exports = async (req, res) => {
-    // 1. Native Telegram Mini App HTML Page (GET)
     if (req.method === 'GET' && req.query.action === 'verify_flow') {
         const { uid, name, t, sig } = req.query;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -2017,13 +2030,11 @@ module.exports = async (req, res) => {
         return res.status(200).send(renderMiniAppPage(uid, name, t, sig));
     }
 
-    // 2. Anti-Multi-Account WebApp Submission (POST from Webapp)
     if (req.method === 'POST' && req.body && req.body.hardware_id) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         return await handleDeviceVerificationSubmit(req, res);
     }
 
-    // 3. Telegram Bot Webhook Updates (POST from Telegram)
     if (req.method === 'POST') {
         try {
             const update = req.body || {};
