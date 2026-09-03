@@ -1013,7 +1013,6 @@ function renderMiniAppPage(uid, name, t, sig) {
 const app = express();
 app.use(express.json());
 
-// মোবাইল নেটওয়ার্ক ও CORS হ্যান্ডলার
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1022,7 +1021,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// প্রোফাইল ছবি ও মিনি অ্যাপ রাউট
 app.get('/api/index', async (req, res) => {
     if (req.query.action === 'avatar') {
         const { uid } = req.query;
@@ -1057,7 +1055,6 @@ app.get('/api/index', async (req, res) => {
     return res.status(200).send('Server is Running ⚡');
 });
 
-// আইপি ভেরিফিকেশন ও বটের আপডেট পোস্ট রুট
 app.post('/api/index', async (req, res) => {
     if (req.body && req.body.hardware_id) {
         return await handleDeviceVerificationSubmit(req, res);
@@ -1070,19 +1067,17 @@ app.post('/api/index', async (req, res) => {
     return res.status(200).send('OK');
 });
 
-// Cron-job এবং সার্ভার একটিভ রাখার রুট
 app.get('/', (req, res) => {
     res.status(200).send('Aura Star Pay Bot is Online 24/7 🚀');
 });
 
 const PORT = process.env.PORT || 8000;
 
-// সার্ভার চালু হওয়ার সাথে সাথে অটোমেটিক টেলিগ্রাম ওয়েব-হুক সেট হয়ে যাবে
 app.listen(PORT, async () => {
     console.log(`Server listening on port ${PORT}`);
     try {
         const webhookUrl = `${APP_URL}/api/index`;
-        const res = await telegramApi('setWebhook', { url: webhookUrl });
+        const res = await telegramApi('setWebhook', { url: webhookUrl, drop_pending_updates: true });
         console.log('Auto Webhook Status:', res);
     } catch (err) {
         console.error('Webhook Setup Error:', err);
