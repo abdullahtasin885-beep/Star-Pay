@@ -7,12 +7,14 @@
 | - Native Telegram Mini App Anti-Multi-Account Security Scan
 | - Fixed Withdrawal & Compact Alert with 'Claim 2 Star' Button
 | - 2-Step Balance Add/Cut with Auto-Notification
+| - Auto Delete Verification Prompt on Success/Reject
+| - Live Telegram Profile Photo in Mini App
 |--------------------------------------------------------------------------
 */
 
 const crypto = require('crypto');
 
-const BOT_TOKEN = '8809628706:AAHXWBZ4k10qQjmZexV_SE-mTPHysJXgIEo';
+const BOT_TOKEN = '8809628706:AAH0VSdO_HJEs5SK3-U-acDwjEQXKGdmTYg';
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-inky.vercel.app';
 const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
@@ -239,11 +241,6 @@ async function getWithdrawRequestChannel() {
     return channel;
 }
 
-async function getGiftCodes() {
-    const codes = await firebaseRequest('gift_codes');
-    return codes && typeof codes === 'object' ? codes : {};
-}
-
 async function getUserWithdrawals(userId) {
     const all = await firebaseRequest('withdrawals');
     if (!all || typeof all !== 'object') return [];
@@ -373,8 +370,6 @@ function isSuperAdmin(userId) {
 async function isAdmin(userId) {
     const uidStr = String(userId).trim();
     if (isSuperAdmin(uidStr)) return true;
-    
-    // ডাটাবেজে এই অ্যাডমিন সক্রিয় আছে কিনা নিখুঁত যাচাই
     const admin = await firebaseRequest(`admins/${uidStr}`);
     return Boolean(admin && typeof admin === 'object' && admin.active === true);
 }
@@ -391,12 +386,9 @@ async function getUserMenu(userId) {
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
         [{ text: '🎁 Gift Code' }]
     ];
-    
-    // শুধুমাত্র অনুমোদিত অ্যাডমিন হলেই '🛠 Admin Panel' বাটন শো করবে
     if (isAdm) {
         keyboard.push([{ text: '🛠 Admin Panel' }]);
     }
-    
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
@@ -552,7 +544,7 @@ async function isUserJoinedAllChannels(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN & VERIFICATION FLOW
+| FORCE JOIN & VERIFICATION FLOW (WITH AUTO-DELETE SUPPORT)
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId) {
@@ -588,7 +580,16 @@ async function showForceJoin(chatId) {
     await sendMessage(chatId, text, { inline_keyboard: keyboard });
 }
 
+// ভেরিফিকেশন মেসেজ পাঠানো এবং আইডি সেভ রাখা যাতে পরে ডিলিট করা যায়
 async function sendDeviceVerificationPrompt(chatId, userId, firstName) {
+    // আগের কোনো পেন্ডিং প্রম্পট থাকলে ডিলিট করে নেওয়া
+    const oldPrompt = await firebaseRequest(`verify_prompts/${userId}`);
+    if (oldPrompt && oldPrompt.chat_id && oldPrompt.message_id) {
+        try {
+            await deleteMessage(oldPrompt.chat_id, oldPrompt.message_id);
+        } catch {}
+    }
+
     const now = Math.floor(Date.now() / 1000);
     const signature = generateVerificationSignature(userId, now);
     const verifyUrl = `${APP_URL}/api/index?action=verify_flow&uid=${userId}&name=${encodeURIComponent(firstName || 'User')}&t=${now}&sig=${signature}`;
@@ -603,7 +604,25 @@ async function sendDeviceVerificationPrompt(chatId, userId, firstName) {
         ]
     };
 
-    await sendMessage(chatId, text, keyboard);
+    const sent = await sendMessage(chatId, text, keyboard);
+    if (sent && sent.ok && sent.result?.message_id) {
+        await firebaseRequest(`verify_prompts/${userId}`, 'PUT', {
+            chat_id: chatId,
+            message_id: sent.result.message_id,
+            created_at: now
+        });
+    }
+}
+
+// স্বয়ংক্রিয়ভাবে ভেরিফিকেশন প্রম্পট মেসেজ ডিলিট করার হেল্পার
+async function deleteVerificationPrompt(userId) {
+    try {
+        const prompt = await firebaseRequest(`verify_prompts/${userId}`);
+        if (prompt && prompt.chat_id && prompt.message_id) {
+            await deleteMessage(prompt.chat_id, prompt.message_id);
+            await firebaseRequest(`verify_prompts/${userId}`, 'DELETE');
+        }
+    } catch {}
 }
 
 /*
@@ -658,7 +677,7 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SUBMISSION (ADMIN EXEMPTED & 1ST USER SAFE)
+| ANTI-MULTI-ACCOUNT SUBMISSION
 |--------------------------------------------------------------------------
 */
 async function handleDeviceVerificationSubmit(req, res) {
@@ -678,26 +697,36 @@ async function handleDeviceVerificationSubmit(req, res) {
             return res.status(403).json({ success: false, message: 'Invalid signature' });
         }
 
-        const user = await getUser(uid);
+        let user = await getUser(uid);
         if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
+            user = {
+                telegram_id: String(uid),
+                first_name: 'User',
+                username: '',
+                balance: 0,
+                verification_status: 'pending_channel',
+                is_verified: false,
+                created_at: now
+            };
+            await setUser(uid, user);
         }
 
         if (user.verification_status === 'verified') {
+            await deleteVerificationPrompt(uid);
             return res.status(200).json({ success: true, already_verified: true });
         }
 
         if (user.verification_status === 'multiple_account_blocked' || user.verification_status === 'manually_blocked') {
+            await deleteVerificationPrompt(uid);
             return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
         }
 
         const joinedAll = await isUserJoinedAllChannels(uid);
         if (!joinedAll) {
-            return res.status(400).json({ success: false, reason: 'CHANNEL_NOT_JOINED' });
+            return res.status(400).json({ success: false, reason: 'CHANNEL_NOT_JOINED', message: 'Please join all required channels first.' });
         }
 
         const isUserAdmin = isSuperAdmin(uid) || (await isAdmin(uid));
-
         const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '';
         const clientIp = rawIp.split(',')[0].trim();
         const ipHash = sha256(clientIp);
@@ -725,6 +754,9 @@ async function handleDeviceVerificationSubmit(req, res) {
                     is_verified: false,
                     updated_at: now
                 });
+
+                // রিজেক্ট বা ব্লক হলে সাথে সাথে প্রম্পট ডিলিট করা
+                await deleteVerificationPrompt(uid);
 
                 const blockMsg = 
                     "🚫 <b>Multiple Account Detected</b>\n\n" +
@@ -793,6 +825,9 @@ async function handleDeviceVerificationSubmit(req, res) {
             }
         }
 
+        // ভেরিফিকেশন সফল হওয়ায় প্রম্পট মেসেজটি ডিলিট করা
+        await deleteVerificationPrompt(uid);
+
         const successMsg = 
             "✅ <b>Verification Successful</b>\n\n" +
             "Your Telegram account and device have been successfully verified.\n\n" +
@@ -812,7 +847,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM MINI APP UI
+| TELEGRAM MINI APP UI (WITH LIVE PROFILE PICTURE)
 |--------------------------------------------------------------------------
 */
 function renderMiniAppPage(uid, name, t, sig) {
@@ -854,8 +889,8 @@ function renderMiniAppPage(uid, name, t, sig) {
 
         .user-info { display: flex; align-items: center; gap: 12px; }
         .avatar {
-            width: 46px;
-            height: 46px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             background: linear-gradient(135deg, #38bdf8, #2563eb);
             display: flex;
@@ -865,6 +900,14 @@ function renderMiniAppPage(uid, name, t, sig) {
             font-weight: bold;
             color: #fff;
             box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+            overflow: hidden;
+            position: relative;
+        }
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
         }
 
         .user-details h3 { font-size: 16px; font-weight: 600; color: #f8fafc; }
@@ -965,7 +1008,9 @@ function renderMiniAppPage(uid, name, t, sig) {
     <div class="main-card">
         <div class="user-header">
             <div class="user-info">
-                <div class="avatar">${displayName.charAt(0).toUpperCase()}</div>
+                <div class="avatar" id="userAvatar">
+                    ${displayName.charAt(0).toUpperCase()}
+                </div>
                 <div class="user-details">
                     <h3>${displayName}</h3>
                     <p>ID: ${uid}</p>
@@ -998,6 +1043,25 @@ function renderMiniAppPage(uid, name, t, sig) {
             script.async = true;
             document.head.appendChild(script);
         })();
+
+        // লাইভ টেলিগ্রাম প্রোফাইল ছবি লোড করার ফাংশন
+        function loadUserProfilePhoto() {
+            try {
+                var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+                var photoUrl = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.photo_url : null;
+                var av = document.getElementById('userAvatar');
+
+                if (photoUrl) {
+                    av.innerHTML = '<img src="' + photoUrl + '" alt="Avatar" onerror="this.remove();">';
+                } else {
+                    var proxyImg = new Image();
+                    proxyImg.onload = function() {
+                        av.innerHTML = '<img src="${APP_URL}/api/index?action=avatar&uid=${uid}" alt="Avatar" onerror="this.remove();">';
+                    };
+                    proxyImg.src = "${APP_URL}/api/index?action=avatar&uid=${uid}";
+                }
+            } catch(e) {}
+        }
 
         async function sha256Browser(str) {
             try {
@@ -1040,6 +1104,8 @@ function renderMiniAppPage(uid, name, t, sig) {
         }
 
         async function startVerification() {
+            loadUserProfilePhoto();
+
             var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
             if (tg) {
                 try { tg.ready(); tg.expand(); } catch(e) {}
@@ -1132,7 +1198,7 @@ function renderMiniAppPage(uid, name, t, sig) {
                     actionBtn.onclick = function() {
                         window.location.href = "https://t.me/${SUPPORT_USERNAME}";
                     };
-                } else {
+                } else if (data.reason === 'CHANNEL_NOT_JOINED') {
                     badgeEl.className = "status-badge blocked";
                     badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> ERROR";
                     titleEl.innerText = "Channel Join Required";
@@ -1146,6 +1212,14 @@ function renderMiniAppPage(uid, name, t, sig) {
                             window.location.href = "https://t.me/${BOT_USERNAME}";
                         }
                     };
+                } else {
+                    badgeEl.className = "status-badge blocked";
+                    badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> ERROR";
+                    titleEl.innerText = "Verification Failed";
+                    subEl.innerText = data.message || "An unexpected error occurred.";
+                    actionBtn.className = "action-btn btn-active";
+                    actionBtn.innerText = "Retry / Return";
+                    actionBtn.onclick = function() { window.location.reload(); };
                 }
             } catch(e) {
                 badgeEl.className = "status-badge blocked";
@@ -1840,7 +1914,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // START COMMAND (সবসময় ইউজার মোড মেনু দেখাবে)
+        // START COMMAND
         if (text.startsWith('/start')) {
             const politeStartText = 
                 `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\n` +
@@ -2022,6 +2096,30 @@ async function handleUpdate(update) {
 |--------------------------------------------------------------------------
 */
 module.exports = async (req, res) => {
+    // ইউজারের প্রোফাইল ফটো নিরাপদে স্ট্রিম করার প্রক্সি অ্যান্ডপয়েন্ট
+    if (req.method === 'GET' && req.query.action === 'avatar') {
+        const { uid } = req.query;
+        if (!uid) return res.status(404).end();
+        try {
+            const photos = await telegramApi('getUserProfilePhotos', { user_id: uid, limit: 1 });
+            if (photos && photos.ok && photos.result.total_count > 0) {
+                const photoSizes = photos.result.photos[0];
+                const fileId = photoSizes[photoSizes.length - 1].file_id;
+                const fileInfo = await telegramApi('getFile', { file_id: fileId });
+                if (fileInfo && fileInfo.ok && fileInfo.result.file_path) {
+                    const imgRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${fileInfo.result.file_path}`);
+                    if (imgRes.ok) {
+                        const buffer = await imgRes.arrayBuffer();
+                        res.setHeader('Content-Type', imgRes.headers.get('content-type') || 'image/jpeg');
+                        res.setHeader('Cache-Control', 'public, max-age=86400');
+                        return res.status(200).send(Buffer.from(buffer));
+                    }
+                }
+            }
+        } catch {}
+        return res.status(404).end();
+    }
+
     if (req.method === 'GET' && req.query.action === 'verify_flow') {
         const { uid, name, t, sig } = req.query;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
