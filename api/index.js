@@ -1,11 +1,14 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (100% PRODUCTION READY & STRICT ADMIN SECURITY 🔒)
+| AURA STAR PAY BOT (100% PRODUCTION READY & STRICT SECURITY 🔒)
 | - Super Admin: 8045367594
+| - Strict Anti-Multi-Account (Hardware Fingerprinting)
+| - Admin Device Rule: Admin Account + Exactly 1 Normal Account Allowed
+| - Strict Force Join: Menu locks instantly if user leaves any channel
+| - Payment Channel separated from mandatory force join
 | - 24/7 Express Server for Render.com
-| - Mobile MB & Wi-Fi 100% Compatible
-| - Auto Delete Verification Prompt on Success/Reject
 | - Live Telegram Profile Photo in Mini App
+| - Auto Delete Verification Prompt on Success/Reject
 |--------------------------------------------------------------------------
 */
 
@@ -21,7 +24,7 @@ const SUPER_ADMIN_ID = 8045367594;
 
 /*
 |--------------------------------------------------------------------------
-| FIREBASE CONFIGURATION (AURA-STAR-PAY)
+| FIREBASE CONFIGURATION
 |--------------------------------------------------------------------------
 */
 const FIREBASE_URL = 'https://aura-star-pay-default-rtdb.firebaseio.com';
@@ -205,13 +208,7 @@ async function getAllForceChannels() {
 async function getPaymentVerificationChannel() {
     let raw = await getSetting('payment_verification_channel', '');
     if (Array.isArray(raw)) raw = raw[0];
-    let channel = String(raw || '').trim();
-    if (channel !== '') {
-        await setSetting('payment_verification_channel', channel);
-        await deleteSetting('withdraw_required_channel');
-        return channel;
-    }
-    return '';
+    return String(raw || '').trim();
 }
 
 async function getWithdrawRequestChannel() {
@@ -282,7 +279,7 @@ async function deleteMessage(chatId, messageId) {
 }
 
 async function answerCallback(callbackId, text = '', alert = false) {
-    await telegramApi('answerCallbackQuery', {
+    return await telegramApi('answerCallbackQuery', {
         callback_query_id: callbackId,
         text: text,
         show_alert: alert
@@ -506,19 +503,24 @@ async function isJoinedChannel(channel, userId) {
     return false;
 }
 
+// শুধুমাত্র অ্যাডমিনের যোগ করা ফোর্স চ্যানেলগুলো চেক করা হবে
 async function isUserJoinedAllChannels(userId) {
     const forceChannels = await getAllForceChannels();
-    for (const ch of Object.values(forceChannels)) {
-        if (ch && ch.channel_id && !(await isJoinedChannel(ch.channel_id, userId))) return false;
+    const channels = Object.values(forceChannels);
+    if (!channels.length) return true;
+
+    for (const ch of channels) {
+        if (ch && ch.channel_id) {
+            const joined = await isJoinedChannel(ch.channel_id, userId);
+            if (!joined) return false;
+        }
     }
-    const paymentChannel = await getPaymentVerificationChannel();
-    if (paymentChannel && !(await isJoinedChannel(paymentChannel, userId))) return false;
     return true;
 }
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN & VERIFICATION PROMPTS
+| FORCE JOIN & VERIFICATION FLOW
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId) {
@@ -531,14 +533,10 @@ async function showForceJoin(chatId) {
         }
     }
 
-    const paymentChannel = await getPaymentVerificationChannel();
-    if (paymentChannel) {
-        const link = paymentChannel.startsWith('@') ? `https://t.me/${paymentChannel.slice(1)}` : '';
-        if (link) keyboard.push([{ text: '📢 Payment/Verification Channel', url: link }]);
-    }
-
     keyboard.push([{ text: '✅ Verify', callback_data: 'verify_join' }]);
-    const text = "📢 <b>Please join our channel first to continue.</b>\n\nAfter joining, press the Verify button below.";
+    const text = 
+        "📢 <b>Please join our official channels first to continue.</b>\n\n" +
+        "নিচের সবকটি চ্যানেলে জয়েন করার পর <b>✅ Verify</b> বাটনে চাপ দিন:";
     await sendMessage(chatId, text, { inline_keyboard: keyboard });
 }
 
@@ -634,7 +632,7 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SCAN SUBMISSION
+| ANTI-MULTI-ACCOUNT SUBMISSION (STRICT ADMIN & USER RULES)
 |--------------------------------------------------------------------------
 */
 async function handleDeviceVerificationSubmit(req, res) {
@@ -667,46 +665,82 @@ async function handleDeviceVerificationSubmit(req, res) {
             await setUser(uid, user);
         }
 
+        // যদি ইউজার আগেই ভেরিফাইড থাকে
         if (user.verification_status === 'verified') {
             await deleteVerificationPrompt(uid);
             return res.status(200).json({ success: true, already_verified: true });
         }
 
+        // ইতিমধ্যে ব্লকড ইউজার হলে
         if (user.verification_status === 'multiple_account_blocked' || user.verification_status === 'manually_blocked') {
             await deleteVerificationPrompt(uid);
             return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
         }
 
+        // ফোর্স চ্যানেলগুলো পুরোপুরি জয়েন করেছে কি না নিশ্চিত করা
         const joinedAll = await isUserJoinedAllChannels(uid);
         if (!joinedAll) {
             return res.status(400).json({ success: false, reason: 'CHANNEL_NOT_JOINED', message: 'Please join all required channels first.' });
         }
 
         const isUserAdmin = isSuperAdmin(uid) || (await isAdmin(uid));
-        const rawIp = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.socket?.remoteAddress || '';
-        const clientIp = rawIp.split(',')[0].trim();
-        const ipHash = sha256(clientIp);
         const deviceTokenHash = sha256(device_token || hardware_id);
 
-        if (!isUserAdmin) {
-            const registeredHardware = await firebaseRequest(`registered_hardware/${hardware_id}`);
-            const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
+        // ডিভাইস ডাটাবেজ চেক
+        const registeredDevice = await firebaseRequest(`registered_devices/${hardware_id}`);
+        const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
 
-            let isMultipleAccount = false;
-            let originalVerifiedUser = null;
+        let isBlocked = false;
+        let blockedReason = '';
 
-            if (registeredHardware && String(registeredHardware.user_id) !== String(uid) && !registeredHardware.is_admin) {
-                isMultipleAccount = true;
-                originalVerifiedUser = registeredHardware.user_id;
-            } else if (registeredToken && String(registeredToken.user_id) !== String(uid) && !registeredToken.is_admin) {
-                isMultipleAccount = true;
-                originalVerifiedUser = registeredToken.user_id;
+        if (isUserAdmin) {
+            // অ্যাডমিন তার ডিভাইসে ভেরিফাই হলে ডিভাইসকে অ্যাডমিন ডিভাইস হিসেবে ফ্ল্যাগ করা
+            const existingUsers = Array.isArray(registeredDevice?.users) ? registeredDevice.users : (registeredDevice?.user_id ? [registeredDevice.user_id] : []);
+            if (!existingUsers.includes(String(uid))) existingUsers.push(String(uid));
+
+            await firebaseRequest(`registered_devices/${hardware_id}`, 'PUT', {
+                is_admin_device: true,
+                admin_uid: String(uid),
+                users: existingUsers,
+                updated_at: now
+            });
+            await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', {
+                is_admin_device: true,
+                admin_uid: String(uid),
+                users: existingUsers,
+                updated_at: now
+            });
+        } else {
+            // সাধারণ ইউজারের ক্ষেত্রে
+            const deviceData = registeredDevice || registeredToken;
+
+            if (deviceData) {
+                const isAdminDevice = Boolean(deviceData.is_admin_device);
+                const usersList = Array.isArray(deviceData.users) ? deviceData.users.map(String) : (deviceData.user_id ? [String(deviceData.user_id)] : []);
+
+                if (isAdminDevice) {
+                    // অ্যাডমিন ডিভাইস রুল: অ্যাডমিন আইডি ছাড়া অন্য সাধারণ অ্যাকাউন্ট সর্বোচ্চ ১টি থাকতে পারবে
+                    const adminUid = String(deviceData.admin_uid || SUPER_ADMIN_ID);
+                    const normalUsers = usersList.filter(id => id !== adminUid);
+
+                    if (normalUsers.length >= 1 && !normalUsers.includes(String(uid))) {
+                        isBlocked = true;
+                        blockedReason = 'Admin device limit reached (Only 1 additional normal account allowed)';
+                    }
+                } else {
+                    // সাধারণ ডিভাইস রুল: ১টি ডিভাইসে মাত্র ১টি অ্যাকাউন্ট। অন্য আইডি দিয়ে ঢুকলে নতুনটি ব্লক হবে।
+                    if (usersList.length >= 1 && !usersList.includes(String(uid))) {
+                        isBlocked = true;
+                        blockedReason = `Device already registered with verified user ${usersList[0]}`;
+                    }
+                }
             }
 
-            if (isMultipleAccount) {
+            if (isBlocked) {
+                // নতুন আইডির ভেরিফিকেশন ব্লক করা (আগের আসল ইউজার অক্ষত থাকবে)
                 await updateUser(uid, {
                     verification_status: 'multiple_account_blocked',
-                    blocked_reason: `Same hardware detected as verified user ${originalVerifiedUser}`,
+                    blocked_reason: blockedReason,
                     is_verified: false,
                     updated_at: now
                 });
@@ -715,8 +749,8 @@ async function handleDeviceVerificationSubmit(req, res) {
 
                 const blockMsg = 
                     "🚫 <b>Multiple Account Detected</b>\n\n" +
-                    "Multiple accounts are not allowed on the same device.\n\n" +
-                    "Your account could not be verified because another Telegram account is already verified on this device.\n\n" +
+                    "Multiple accounts are strictly not allowed on the same device.\n\n" +
+                    "Your account has been blocked because another account is already verified on this device.\n\n" +
                     "If you believe this is a mistake, please contact support.";
                 await sendMessage(uid, blockMsg, {
                     inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
@@ -725,20 +759,29 @@ async function handleDeviceVerificationSubmit(req, res) {
                 return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
             }
 
-            await firebaseRequest(`registered_hardware/${hardware_id}`, 'PUT', { user_id: String(uid), is_admin: false, created_at: now });
-            await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', { user_id: String(uid), is_admin: false, created_at: now });
+            // ডিভাইস ডাটাবেজে এই নতুন ইউজার যুক্ত করা
+            const currentUsers = Array.isArray(deviceData?.users) ? deviceData.users.map(String) : [];
+            if (!currentUsers.includes(String(uid))) currentUsers.push(String(uid));
+
+            const savePayload = {
+                is_admin_device: Boolean(deviceData?.is_admin_device),
+                admin_uid: deviceData?.admin_uid || null,
+                users: currentUsers,
+                updated_at: now
+            };
+
+            await firebaseRequest(`registered_devices/${hardware_id}`, 'PUT', savePayload);
+            await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', savePayload);
         }
 
+        // ইউজারের ভেরিফিকেশন তথ্য সেভ করা
         await firebaseRequest(`user_verifications/${uid}`, 'PUT', {
             telegram_id: String(uid),
             username: String(user.username || ''),
-            ip_hash: ipHash,
             hardware_id: hardware_id,
-            device_token_hash: deviceTokenHash,
             verification_status: 'verified',
             first_verified_at: now,
             last_verified_at: now,
-            created_at: now,
             updated_at: now
         });
 
@@ -759,6 +802,7 @@ async function handleDeviceVerificationSubmit(req, res) {
 
         await updateUser(uid, userUpdates);
 
+        // রেফারেল বোনাস বণ্টন
         if (user.referred_by && !user.referral_rewarded) {
             const ref = await getUser(user.referred_by);
             if (ref && ref.verification_status === 'verified') {
@@ -781,14 +825,14 @@ async function handleDeviceVerificationSubmit(req, res) {
         await sendMessage(uid, mainMenuPrompt, await getUserMenu(uid));
 
         return res.status(200).json({ success: true, message: 'VERIFIED' });
-    } catch {
+    } catch (e) {
         return res.status(500).json({ success: false, message: 'Server error' });
     }
 }
 
 /*
 |--------------------------------------------------------------------------
-| MINI APP HTML (100% RESPONSIVE FOR MOBILE MB & WIFI)
+| MINI APP HTML (WITH DEEP HARDWARE FINGERPRINTING)
 |--------------------------------------------------------------------------
 */
 function renderMiniAppPage(uid, name, t, sig) {
@@ -798,7 +842,7 @@ function renderMiniAppPage(uid, name, t, sig) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>START BOT INC</title>
+    <title>SECURITY SCAN</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
         body { background: #070d18; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; overflow: hidden; }
@@ -849,8 +893,8 @@ function renderMiniAppPage(uid, name, t, sig) {
             </svg>
         </div>
 
-        <h2 id="titleEl" class="title">Security Scan</h2>
-        <p id="subEl" class="subtitle">Analyzing network packets...</p>
+        <h2 id="titleEl" class="title">Hardware Scan</h2>
+        <p id="subEl" class="subtitle">Analyzing hardware signatures...</p>
         <button id="actionBtn" class="action-btn btn-disabled">Awaiting Verification</button>
     </div>
 
@@ -887,6 +931,43 @@ function renderMiniAppPage(uid, name, t, sig) {
             }
         }
 
+        function getDeepHardwareFingerprint() {
+            var glRenderer = 'none';
+            try {
+                var canvas = document.createElement('canvas');
+                var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    if (debugInfo) {
+                        glRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) + '|||' + gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+                    }
+                }
+            } catch(e) {}
+
+            var canvasData = 'none';
+            try {
+                var c = document.createElement('canvas');
+                c.width = 240; c.height = 60;
+                var ctx = c.getContext('2d');
+                ctx.textBaseline = "alphabetic";
+                ctx.fillStyle = "#f60";
+                ctx.fillRect(100, 5, 80, 30);
+                ctx.fillStyle = "#069";
+                ctx.font = "15px 'Arial'";
+                ctx.fillText("StarPayHardwareFingerprint,885", 2, 15);
+                canvasData = c.toDataURL();
+            } catch(e) {}
+
+            var screenInfo = screen.width + "x" + screen.height + "x" + screen.colorDepth + "@" + (window.devicePixelRatio || 1);
+            var cores = navigator.hardwareConcurrency || 1;
+            var memory = navigator.deviceMemory || 'na';
+            var touches = navigator.maxTouchPoints || 0;
+            var platform = navigator.platform || '';
+            var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+
+            return [glRenderer, canvasData, screenInfo, cores, memory, touches, platform, timezone].join('###');
+        }
+
         async function startVerification() {
             loadUserProfilePhoto();
             var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -905,19 +986,16 @@ function renderMiniAppPage(uid, name, t, sig) {
                 try { localStorage.setItem('tg_device_token', deviceToken); } catch(e) {}
             }
 
-            await new Promise(function(r) { setTimeout(r, 1100); });
+            await new Promise(function(r) { setTimeout(r, 900); });
 
             badgeEl.className = "status-badge processing";
             badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> PROCESSING";
-            titleEl.innerText = "Analyzing Device";
-            subEl.innerText = "Verifying hardware signature...";
+            titleEl.innerText = "Scanning Device";
+            subEl.innerText = "Locking hardware fingerprint...";
             iconEl.setAttribute('stroke', '#22d3ee');
 
-            var screenData = screen.width + "x" + screen.height + "@" + (window.devicePixelRatio || 1);
-            var cores = navigator.hardwareConcurrency || 1;
-            var platform = navigator.platform || '';
-            var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-            var hardwareId = await sha256Browser([screenData, cores, platform, timezone].join('|||'));
+            var rawHardware = getDeepHardwareFingerprint();
+            var hardwareId = await sha256Browser(rawHardware);
 
             var payload = {
                 uid: "${uid}",
@@ -957,7 +1035,7 @@ function renderMiniAppPage(uid, name, t, sig) {
                     badgeEl.className = "status-badge blocked";
                     badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> BLOCKED";
                     titleEl.innerText = "Multiple Account Detected";
-                    subEl.innerText = "Multiple accounts are not allowed on the same device.";
+                    subEl.innerText = "Multiple accounts are not allowed on this device.";
                     iconEl.setAttribute('stroke', '#f87171');
                     actionBtn.className = "action-btn btn-danger";
                     actionBtn.innerText = "Contact Support";
@@ -1018,21 +1096,14 @@ async function handleUpdate(update) {
         if (data === 'verify_join') {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
-                await answerCallback(callback.id);
-                await sendMessage(chatId, "❌ <b>আপনি প্রয়োজনীয় চ্যানেলে জয়েন করেননি!</b>\n\nঅনুগ্রহ করে সব চ্যানেলে জয়েন করে আবার Verify বাটনে চাপ দিন।");
+                await answerCallback(callback.id, "❌ আপনি এখনো প্রয়োজনীয় সব চ্যানেলে জয়েন করেননি!", true);
                 return;
             }
 
             const user = await getUser(fromId);
-            if (user && user.verification_status === 'verified') {
-                await answerCallback(callback.id);
-                if (chatId && messageId) await deleteMessage(chatId, messageId);
-                await sendMessage(fromId, "✅ <b>Verification Successful</b>\n\nWelcome back! 🎉", await getUserMenu(fromId));
-                return;
-            }
 
             if (user && user.verification_status === 'multiple_account_blocked') {
-                await answerCallback(callback.id);
+                await answerCallback(callback.id, "🚫 আপনার অ্যাকাউন্টটি মাল্টিপল ডিভাইস হিসেবে ব্লকড!", true);
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
                 const blockMsg = 
                     "🚫 <b>Multiple Account Detected</b>\n\n" +
@@ -1044,10 +1115,17 @@ async function handleUpdate(update) {
                 return;
             }
 
-            await answerCallback(callback.id);
+            // ইউজার আগে থেকেই ভেরিফাইড হলে সোজা মেনু দেখাবে
+            if (user && user.verification_status === 'verified') {
+                await answerCallback(callback.id, "✅ চ্যানেল ভেরিফিকেশন সফল হয়েছে!", false);
+                if (chatId && messageId) await deleteMessage(chatId, messageId);
+                await sendMessage(fromId, "✅ <b>You are verified!</b>\n\nWelcome back! 🎉", await getUserMenu(fromId));
+                return;
+            }
+
+            await answerCallback(callback.id, "✅ চ্যানেল ভেরিফিকেশন সফল! এবার ডিভাইস ভেরিফাই করুন।", false);
             if (chatId && messageId) await deleteMessage(chatId, messageId);
 
-            await sendMessage(chatId, "✅ <b>Channel Verification Successful</b>");
             await sendDeviceVerificationPrompt(chatId, fromId, callback.from.first_name);
             return;
         }
@@ -1291,6 +1369,36 @@ async function handleUpdate(update) {
             return;
         }
 
+        // ==========================================
+        // 🔒 STRICT FORCE JOIN & CHANNEL LEAVE CHECK
+        // ==========================================
+        if (!isAdm) {
+            // যদি ইউজার ব্লকে থাকে
+            if (user.verification_status === 'multiple_account_blocked') {
+                const blockMsg = 
+                    "🚫 <b>Multiple Account Detected</b>\n\n" +
+                    "Multiple accounts are not allowed on this device.\n\n" +
+                    "If you believe this is a mistake, please contact support.";
+                await sendMessage(chatId, blockMsg, {
+                    inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
+                });
+                return;
+            }
+
+            // কোনো চ্যানেল থেকে লিভ নিলে সাথে সাথে মেনু লক হবে
+            const joinedAll = await isUserJoinedAllChannels(fromId);
+            if (!joinedAll) {
+                await showForceJoin(chatId);
+                return;
+            }
+
+            // চ্যানেল জয়েন করা থাকলে যদি ডিভাইস ভেরিফিকেশন বাকি থাকে
+            if (user.verification_status !== 'verified') {
+                await sendDeviceVerificationPrompt(chatId, fromId, msg.from.first_name);
+                return;
+            }
+        }
+
         // ADMIN STATE INPUTS
         if (isAdm) {
             const aState = await getAdminState(fromId);
@@ -1531,7 +1639,7 @@ async function handleUpdate(update) {
 
                 const reqChannel = await getWithdrawRequestChannel();
                 if (!reqChannel) {
-                    await sendMessage(chatId, "⚠️ Withdraw Channel Configured নেই।");
+                    await sendMessage(chatId, "⚠️ Withdraw Request Channel Configured নেই।");
                     await clearUserState(fromId);
                     return;
                 }
@@ -1593,30 +1701,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // VERIFICATION RESTRICTION
-        if (!isAdm) {
-            const isVerified = user.verification_status === 'verified';
-            if (!isVerified) {
-                if (user.verification_status === 'multiple_account_blocked') {
-                    const blockMsg = "🚫 <b>Multiple Account Detected</b>\n\nMultiple accounts are not allowed on the same device.";
-                    await sendMessage(chatId, blockMsg, {
-                        inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
-                    });
-                    return;
-                }
-
-                const joined = await isUserJoinedAllChannels(fromId);
-                if (!joined) {
-                    await showForceJoin(chatId);
-                    return;
-                } else {
-                    await sendDeviceVerificationPrompt(chatId, fromId, msg.from.first_name);
-                    return;
-                }
-            }
-        }
-
-        // COMMANDS
+        // COMMANDS & MENUS
         if (text.startsWith('/start')) {
             const politeStartText = `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\nEarn Telegram Stars easily and withdraw directly.`;
             await sendMessage(chatId, politeStartText, await getUserMenu(fromId));
@@ -1718,10 +1803,9 @@ async function handleUpdate(update) {
                 return;
             }
             if (text === '📢 Channel Settings') {
-                const paymentChannel = await getPaymentVerificationChannel();
                 const forceChannels = await getAllForceChannels();
                 const requestChannel = await getWithdrawRequestChannel();
-                const textOut = `📢 <b>CHANNEL SETTINGS</b>\n\n🔐 <b>Payment Channel:</b> <code>${escapeHtml(paymentChannel || 'Not Set')}</code>\n📢 <b>Force Channels:</b> <b>${Object.keys(forceChannels).length}</b>\n💸 <b>Request Channel:</b> <code>${escapeHtml(requestChannel || 'Not Set')}</code>`;
+                const textOut = `📢 <b>CHANNEL SETTINGS</b>\n\n📢 <b>Force Channels:</b> <b>${Object.keys(forceChannels).length}</b>\n💸 <b>Request Channel:</b> <code>${escapeHtml(requestChannel || 'Not Set')}</code>`;
                 const kb = [
                     ...forceJoinKeyboard().inline_keyboard
                 ];
