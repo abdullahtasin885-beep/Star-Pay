@@ -1766,7 +1766,7 @@ async function handleUpdate(update) {
             }
 
             await setUserState(fromId, 'withdraw_username');
-            const withdrawPrompt = `💸 <b>WITHDRAW STARS</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Fixed Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n\nTelegram Username দিন:\nExample: <code>@username</code>`;
+            const withdrawPrompt = `💸 <b>WITHDRAW STARS</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Fixed Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n\n📢 চ্যানেলের Username বা Post Link দিন\nExample: <code>Example: @channelname / https://t.me/channel/123</code>`;
             await sendMessage(chatId, withdrawPrompt, getCancelKeyboard());
             return;
         }
