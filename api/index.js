@@ -15,7 +15,7 @@
 const express = require('express');
 const crypto = require('crypto');
 
-const BOT_TOKEN = '8809628706:AAFz_QHyiKpdwyT_jh66HBiRvG0vo9NH3QE';
+const BOT_TOKEN = '8809628706:AAFABbmhw3fPakfRLPBbmIQt77qsPlLR48A';
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-go71.onrender.com';
 const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
