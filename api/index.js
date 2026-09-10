@@ -1,7 +1,9 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (PRODUCTION READY & ULTRA-FAST ⚡)
+| AURA STAR PAY BOT (ULTRA-FAST & PRODUCTION READY ⚡)
 | - Super Admin: 8045367594
+| - Short Join Notice with Auto-Delete & Re-Prompt
+| - User Menu with "📮 Referral" Button
 | - No Popup Alert Modal (Direct In-Chat Messages Only)
 | - Exact UI Matching Force Join with "Claim" Button
 | - Channel Broadcast Detailed Live Report with Failure Reasons
@@ -27,8 +29,8 @@ const SUPER_ADMIN_ID = 8045367594;
 | HIGH-PERFORMANCE IN-MEMORY CACHE STORES
 |--------------------------------------------------------------------------
 */
-const userChannelCache = new Map();    // key: userId, val: { isMember: boolean, expiresAt: number }
-const settingsCache = new Map();       // key: settingKey, val: { value: any, expiresAt: number }
+const userChannelCache = new Map();
+const settingsCache = new Map();
 let forceChannelsCache = null;
 let forceChannelsExpiresAt = 0;
 
@@ -289,7 +291,7 @@ async function deleteMessage(chatId, messageId) {
     return await telegramApi('deleteMessage', { chat_id: chatId, message_id: messageId });
 }
 
-// কোনো পপ-আপ শো করবে না, সাইলেন্টলি বাটন লোডিং অফ করবে
+// কোনো পপ-আপ অ্যালার্ট দেবে না
 async function answerCallback(callbackId) {
     return await telegramApi('answerCallbackQuery', {
         callback_query_id: callbackId,
@@ -366,7 +368,7 @@ async function isAdmin(userId) {
 async function getUserMenu(userId) {
     const isAdm = await isAdmin(userId);
     const keyboard = [
-        [{ text: '👤 My Account' }, { text: '👥 Refer & Earn' }],
+        [{ text: '👤 My Account' }, { text: '📮 Referral' }],
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
         [{ text: '📊 System Status' }]
     ];
@@ -563,7 +565,7 @@ async function showForceJoin(chatId, firstName = 'User') {
         `👋 <b>Hello, ${escapeHtml(firstName)}!</b>\n\n` +
         `📢 <b>Join All Channels To Continue.</b>`;
 
-    await sendMessage(chatId, text, { inline_keyboard: inlineKeyboard });
+    return await sendMessage(chatId, text, { inline_keyboard: inlineKeyboard });
 }
 
 /*
@@ -629,15 +631,23 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // ভেরিফাই চেক হ্যান্ডলার (কোনো পপ-আপ আসবে না, সরাসরি চ্যাটে মেসেজ আসবে)
+        // ভেরিফাই চেক হ্যান্ডলার (Claim বাটনে ক্লিক)
         if (data === 'verify_join') {
-            await answerCallback(callback.id); // লোডিং বাটন অফ করবে
+            await answerCallback(callback.id);
             invalidateUserChannelCache(fromId);
             
             const joinedAll = await isUserJoinedAllChannels(fromId, true);
             if (!joinedAll) {
-                // পপ-আপের বদলে ডাইরেক্ট চ্যাটে মেসেজ
-                await sendMessage(fromId, "❌ <b>আপনি এখনো প্রয়োজনীয় সব চ্যানেলে জয়েন করেননি!</b>\n\nদয়া করে সবকটি চ্যানেলে জয়েন করে পুনরায় <b>Claim</b> বাটনে চাপুন।");
+                // ১. আগের চ্যানেল জয়েন মেসেজটি ডিলিট করা
+                if (chatId && messageId) {
+                    try { await deleteMessage(chatId, messageId); } catch {}
+                }
+
+                // ২. একদম শর্ট নোটিশ মেসেজ পাঠানো
+                await sendMessage(fromId, "⚠️ <b>আগে সব চ্যানেলে জয়েন করুন!</b>");
+
+                // ৩. নোটিশের পরে নতুন করে চ্যানেলে জয়েন করার মেসেজ পাঠানো
+                await showForceJoin(fromId, callback.from.first_name);
                 return;
             }
 
@@ -686,7 +696,9 @@ async function handleUpdate(update) {
                 }
             }
 
-            if (chatId && messageId) await deleteMessage(chatId, messageId);
+            if (chatId && messageId) {
+                try { await deleteMessage(chatId, messageId); } catch {}
+            }
             await sendMessage(fromId, `✅ <b>ভেরিফিকেশন সফল হয়েছে!</b>\n\nWelcome to ${escapeHtml(BOT_USERNAME)}! 🎉`, await getUserMenu(fromId));
             return;
         }
@@ -1417,7 +1429,8 @@ async function handleUpdate(update) {
             return;
         }
 
-        if (text === '👥 Refer & Earn') {
+        // 📮 Referral বাটন হ্যান্ডলার
+        if (text === '📮 Referral' || text === '👥 Refer & Earn') {
             const u = await getUser(fromId);
             const refCount = Number(u?.total_referrals || 0);
             const refBonus = Number(await getSetting('referral_bonus', 0));
@@ -1427,7 +1440,7 @@ async function handleUpdate(update) {
 
             const refMessage =
                 `👋 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-                `🎁 <b>Referral Center</b>\n\n` +
+                `📮 <b>Referral Center</b>\n\n` +
                 `👥 <b>Total Referrals :</b> <b>${refCount}</b>\n` +
                 `💰 <b>Reward Per Referral :</b> <b>${formatNumber(refBonus)} ⭐</b>\n\n` +
                 `🔗 <b>Your Referral Link:</b>\n<code>${link}</code>`;
