@@ -1,7 +1,8 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (ULTRA-FAST & PRODUCTION READY ⚡)
+| AURA STAR PAY BOT (PRODUCTION READY & ULTRA-FAST ⚡)
 | - Super Admin: 8045367594
+| - No Popup Alert Modal (Direct In-Chat Messages Only)
 | - Exact UI Matching Force Join with "Claim" Button
 | - Channel Broadcast Detailed Live Report with Failure Reasons
 | - Sub-300ms Parallel Channel Checking with Promise.all
@@ -288,11 +289,11 @@ async function deleteMessage(chatId, messageId) {
     return await telegramApi('deleteMessage', { chat_id: chatId, message_id: messageId });
 }
 
-async function answerCallback(callbackId, text = '', alert = false) {
+// কোনো পপ-আপ শো করবে না, সাইলেন্টলি বাটন লোডিং অফ করবে
+async function answerCallback(callbackId) {
     return await telegramApi('answerCallbackQuery', {
         callback_query_id: callbackId,
-        text: text,
-        show_alert: alert
+        show_alert: false
     });
 }
 
@@ -541,7 +542,6 @@ async function showForceJoin(chatId, firstName = 'User') {
     const inlineKeyboard = [];
     const total = channelList.length;
 
-    // প্রতি লাইনে ২টা করে 'Join' বাটন (ছবির হুবহু স্টাইল)
     for (let i = 0; i < total; i += 2) {
         if (i + 1 < total) {
             inlineKeyboard.push([
@@ -549,19 +549,16 @@ async function showForceJoin(chatId, firstName = 'User') {
                 { text: channelList[i + 1].channel_name || 'Join', url: channelList[i + 1].channel_link }
             ]);
         } else {
-            // বেজোড় হলে শেষটি ফুল লাইনে
             inlineKeyboard.push([
                 { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link }
             ]);
         }
     }
 
-    // নিচে ছবির মতো 'Claim' বাটন
     inlineKeyboard.push([
         { text: 'Claim', callback_data: 'verify_join' }
     ]);
 
-    // ছবির হুবহু টেক্সট
     const text =
         `👋 <b>Hello, ${escapeHtml(firstName)}!</b>\n\n` +
         `📢 <b>Join All Channels To Continue.</b>`;
@@ -632,12 +629,15 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // ভেরিফাই চেক হ্যান্ডলার (Claim বাটনে ক্লিক)
+        // ভেরিফাই চেক হ্যান্ডলার (কোনো পপ-আপ আসবে না, সরাসরি চ্যাটে মেসেজ আসবে)
         if (data === 'verify_join') {
+            await answerCallback(callback.id); // লোডিং বাটন অফ করবে
             invalidateUserChannelCache(fromId);
+            
             const joinedAll = await isUserJoinedAllChannels(fromId, true);
             if (!joinedAll) {
-                await answerCallback(callback.id, "❌ আপনি এখনো প্রয়োজনীয় সব চ্যানেলে জয়েন করেননি!", true);
+                // পপ-আপের বদলে ডাইরেক্ট চ্যাটে মেসেজ
+                await sendMessage(fromId, "❌ <b>আপনি এখনো প্রয়োজনীয় সব চ্যানেলে জয়েন করেননি!</b>\n\nদয়া করে সবকটি চ্যানেলে জয়েন করে পুনরায় <b>Claim</b> বাটনে চাপুন।");
                 return;
             }
 
@@ -686,9 +686,7 @@ async function handleUpdate(update) {
                 }
             }
 
-            await answerCallback(callback.id, "✅ চ্যানেল ভেরিফিকেশন সফল হয়েছে!", false);
             if (chatId && messageId) await deleteMessage(chatId, messageId);
-
             await sendMessage(fromId, `✅ <b>ভেরিফিকেশন সফল হয়েছে!</b>\n\nWelcome to ${escapeHtml(BOT_USERNAME)}! 🎉`, await getUserMenu(fromId));
             return;
         }
@@ -696,8 +694,9 @@ async function handleUpdate(update) {
         // উইথড্র এপ্রুভ / রিজেক্ট
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
+            await answerCallback(callback.id);
             if (!(await isAdmin(fromId))) {
-                await answerCallback(callback.id, '⛔ Permission Denied!', true);
+                await sendMessage(fromId, "⛔ <b>Permission Denied!</b>");
                 return;
             }
             const action = match[1];
@@ -705,7 +704,7 @@ async function handleUpdate(update) {
             const withdraw = await firebaseRequest(`withdrawals/${withdrawId}`);
 
             if (!withdraw || withdraw.status !== 'pending') {
-                await answerCallback(callback.id, '⚠️ Request already processed!', true);
+                await sendMessage(fromId, "⚠️ <b>Request already processed!</b>");
                 return;
             }
 
@@ -719,7 +718,6 @@ async function handleUpdate(update) {
                     processed_by_username: adminUsername,
                     processed_at: now
                 });
-                await answerCallback(callback.id, '✅ Approved!');
                 await sendMessage(withdraw.user_id, `🎉 <b>Withdrawal Approved!</b>\n\n💰 Amount: <b>${formatNumber(withdraw.after_fee)} STAR</b>\n🧾 ID: <code>${withdraw.transaction_id}</code>`);
 
                 if (chatId && messageId) {
@@ -742,7 +740,6 @@ async function handleUpdate(update) {
                     processed_at: now,
                     refunded: true
                 });
-                await answerCallback(callback.id, '❌ Rejected & Refunded!');
                 await sendMessage(withdraw.user_id, `❌ <b>Withdrawal Rejected</b>\n\n${formatNumber(withdraw.amount)} STAR balance-এ রিফান্ড করা হয়েছে।`);
 
                 if (chatId && messageId) {
@@ -758,14 +755,16 @@ async function handleUpdate(update) {
         if (await isAdmin(fromId)) {
             // ১. ইউজার ব্রডকাস্ট Send
             if (data === 'confirm_broadcast_users') {
+                await answerCallback(callback.id);
                 const aState = await getAdminState(fromId);
                 if (!aState || aState.action !== 'confirm_broadcast_users') {
-                    await answerCallback(callback.id, 'Session Expired!', true);
+                    await sendMessage(fromId, "⚠️ <b>Session Expired!</b>");
                     return;
                 }
-                await answerCallback(callback.id, '🚀 ব্রডকাস্ট শুরু হচ্ছে...');
                 await clearAdminState(fromId);
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
+
+                await sendMessage(chatId, "🚀 <b>ইউজার ব্রডকাস্ট শুরু হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।</b>");
 
                 const users = await getAllUsers();
                 let success = 0, failed = 0;
@@ -802,14 +801,14 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // ২. চ্যানেল ব্রডকাস্ট Send (লাইভ ও বিস্তারিত কারণসহ রিপোর্ট)
+            // ২. চ্যানেল ব্রডকাস্ট Send
             if (data === 'confirm_broadcast_channels') {
+                await answerCallback(callback.id);
                 const aState = await getAdminState(fromId);
                 if (!aState || aState.action !== 'confirm_broadcast_channels') {
-                    await answerCallback(callback.id, 'Session Expired!', true);
+                    await sendMessage(fromId, "⚠️ <b>Session Expired!</b>");
                     return;
                 }
-                await answerCallback(callback.id, '🚀 চ্যানেল ব্রডকাস্ট শুরু হচ্ছে...');
                 await clearAdminState(fromId);
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
 
@@ -820,6 +819,8 @@ async function handleUpdate(update) {
                     await sendMessage(chatId, "⚠️ কোনো Force Join Channel ডাটাবেজে পাওয়া যায়নি।", getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
+
+                await sendMessage(chatId, "🚀 <b>চ্যানেল ব্রডকাস্ট শুরু হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।</b>");
 
                 let success = 0, failed = 0;
                 const sentRecords = {};
@@ -871,9 +872,9 @@ async function handleUpdate(update) {
 
             // ব্রডকাস্ট বাতিল
             if (data === 'cancel_broadcast') {
+                await answerCallback(callback.id);
                 await clearAdminState(fromId);
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
-                await answerCallback(callback.id, '❌ ব্রডকাস্ট বাতিল করা হয়েছে!');
                 await sendMessage(chatId, "❌ ব্রডকাস্ট বাতিল করা হয়েছে।", getAdminMenu(isSuperAdmin(fromId)));
                 return;
             }
@@ -881,13 +882,13 @@ async function handleUpdate(update) {
             // ব্রডকাস্ট ডিলিট হ্যান্ডলার
             const delMatch = data.match(/^delete_bc_(bc_[A-Za-z0-9_]+)$/);
             if (delMatch) {
+                await answerCallback(callback.id);
                 const bId = delMatch[1];
                 const bcData = await firebaseRequest(`broadcast_history/${bId}`);
                 if (!bcData || !bcData.sent) {
-                    await answerCallback(callback.id, '⚠️ ব্রডকাস্ট হিস্টোরি পাওয়া যায়নি বা ইতিমধ্যে ডিলিট করা হয়েছে!', true);
+                    await sendMessage(fromId, "⚠️ <b>ব্রডকাস্ট হিস্টোরি পাওয়া যায়নি বা ইতিমধ্যে ডিলিট করা হয়েছে!</b>");
                     return;
                 }
-                await answerCallback(callback.id, '🗑️ মেসেজগুলো ডিলিট করা হচ্ছে...');
 
                 let delCount = 0;
                 for (const [targetChat, targetMsgId] of Object.entries(bcData.sent)) {
@@ -905,18 +906,19 @@ async function handleUpdate(update) {
 
             // অন্যান্য এডমিন কলব্যাক
             if (data === 'admin_add' && isSuperAdmin(fromId)) {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'add_admin');
-                await answerCallback(callback.id, 'Admin ID পাঠান');
                 await sendMessage(fromId, "➕ <b>নতুন এডমিন যোগ করুন</b>\n\nযে Telegram User ID-কে Admin করতে চান সেটি পাঠান:", getCancelKeyboard());
                 return;
             }
             if (data === 'admin_remove' && isSuperAdmin(fromId)) {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'remove_admin');
-                await answerCallback(callback.id, 'Admin ID পাঠান');
                 await sendMessage(fromId, "➖ <b>এডমিন রিমুভ করুন</b>\n\nযে Admin-কে Remove করতে চান তার Telegram ID পাঠান:", getCancelKeyboard());
                 return;
             }
             if (data === 'admin_list' && isSuperAdmin(fromId)) {
+                await answerCallback(callback.id);
                 const admins = await getAllAdmins();
                 let list = `👮 <b>এডমিন তালিকা</b>\n━━━━━━━━━━━━━━━━━━\n\n👑 <b>Super Admin</b>\n• <code>${SUPER_ADMIN_ID}</code>\n\n👮 <b>অন্যান্য Admin</b>\n`;
                 let has = false;
@@ -924,37 +926,40 @@ async function handleUpdate(update) {
                     if (a && a.active) { has = true; list += `• <code>${escapeHtml(aId)}</code>\n`; }
                 }
                 if (!has) list += "কোনো অতিরিক্ত Admin নেই।";
-                await answerCallback(callback.id, 'Loaded');
                 await sendMessage(fromId, list);
                 return;
             }
             if (data === 'force_add') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'add_force_channel_id');
-                await answerCallback(callback.id, 'Channel ID পাঠান');
                 await sendMessage(fromId, "➕ <b>ফোর্স চ্যানেল যোগ করুন</b>\n\nChannel ID পাঠান (যেমন: <code>-1001234567890</code>):", getCancelKeyboard());
                 return;
             }
             if (data === 'force_remove') {
+                await answerCallback(callback.id);
                 const channels = await getAllForceChannels();
-                if (!Object.keys(channels).length) { await answerCallback(callback.id, 'কোনো Channel নেই!'); return; }
+                if (!Object.keys(channels).length) {
+                    await sendMessage(fromId, "⚠️ <b>কোনো Channel তালিকায় নেই!</b>");
+                    return;
+                }
                 const kb = [];
                 for (const [k, c] of Object.entries(channels)) {
                     if (c) kb.push([{ text: `❌ ${c.channel_name || 'Unknown'}`, callback_data: `removeforce_${k}` }]);
                 }
-                await answerCallback(callback.id, 'Select');
                 await sendMessage(fromId, "📢 <b>ফোর্স চ্যানেল রিমুভ</b>\n\nতালিকা থেকে Channel নির্বাচন করুন:", { inline_keyboard: kb });
                 return;
             }
             const removeMatch = data.match(/^removeforce_([A-Za-z0-9_-]+)$/);
             if (removeMatch) {
+                await answerCallback(callback.id);
                 await firebaseRequest(`force_channels/${removeMatch[1]}`, 'DELETE');
                 invalidateForceChannelsCache();
                 userChannelCache.clear();
-                await answerCallback(callback.id, 'Removed');
                 await sendMessage(fromId, "✅ <b>চ্যানেল সফলভাবে রিমুভ করা হয়েছে!</b>", getAdminMenu(isSuperAdmin(fromId)));
                 return;
             }
             if (data === 'force_list') {
+                await answerCallback(callback.id);
                 const channels = await getAllForceChannels();
                 let list = "📢 <b>ফোর্স চ্যানেল তালিকা</b>\n━━━━━━━━━━━━━━━━━━\n";
                 if (!Object.keys(channels).length) list += "\nকোনো Force Join Channel নেই।";
@@ -963,46 +968,45 @@ async function handleUpdate(update) {
                         if (c) list += `\n\n🔹 <b>${escapeHtml(c.channel_name || '')}</b>\n🆔 ID: <code>${escapeHtml(c.channel_id || '')}</code>\n🔗 Link: <code>${escapeHtml(c.channel_link || '')}</code>`;
                     }
                 }
-                await answerCallback(callback.id, 'Loaded');
                 await sendLongMessage(fromId, list);
                 return;
             }
             if (data === 'balance_add') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'add_balance_user');
-                await answerCallback(callback.id, 'User ID পাঠান');
                 await sendMessage(fromId, "➕ <b>ব্যালেন্স যোগ (ধাপ ১/২)</b>\n\n👤 ইউজারের <b>Telegram User ID</b> পাঠান:", getCancelKeyboard());
                 return;
             }
             if (data === 'balance_cut') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'cut_balance_user');
-                await answerCallback(callback.id, 'User ID পাঠান');
                 await sendMessage(fromId, "➖ <b>ব্যালেন্স কাটুন (ধাপ ১/২)</b>\n\n👤 ইউজারের <b>Telegram User ID</b> পাঠান:", getCancelKeyboard());
                 return;
             }
             if (data === 'bonus_welcome') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'welcome_bonus');
-                await answerCallback(callback.id, 'Send amount');
                 const cur = Number(await getSetting('welcome_bonus', 0));
                 await sendMessage(fromId, `🎁 <b>Welcome Bonus:</b> <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'bonus_referral') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'referral_bonus');
-                await answerCallback(callback.id, 'Send amount');
                 const cur = Number(await getSetting('referral_bonus', 0));
                 await sendMessage(fromId, `👥 <b>Referral Bonus:</b> <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'withdraw_minimum') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'minimum_withdraw');
-                await answerCallback(callback.id, 'Send amount');
                 const cur = Number(await getSetting('min_withdraw', 15));
                 await sendMessage(fromId, `💸 <b>Fixed Withdraw Amount:</b> <b>${formatNumber(cur)} ⭐</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
             if (data === 'withdraw_fee') {
+                await answerCallback(callback.id);
                 await setAdminState(fromId, 'withdraw_fee');
-                await answerCallback(callback.id, 'Send fee');
                 const cur = Number(await getSetting('withdraw_fee_percent', 0));
                 await sendMessage(fromId, `📊 <b>Withdrawal Fee:</b> <b>${formatNumber(cur)}%</b>\n\nPercentage পাঠান (0-100):`, getCancelKeyboard());
                 return;
@@ -1049,7 +1053,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ফাস্ট ফোর্স জয়েন চেক (ছবির স্টাইলে)
+        // ফাস্ট ফোর্স জয়েন চেক
         if (!isAdm) {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
