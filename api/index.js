@@ -1,7 +1,10 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (PRODUCTION READY ⚡)
+| AURA STAR PAY BOT (ULTRA-HIGH PERFORMANCE ENGINE ⚡)
 | - Super Admin: 8045367594
+| - Sub-300ms Response Times with Promise.all Parallelization
+| - In-Memory Channel Membership Cache (30s TTL with verify_join Bypass)
+| - In-Memory Force Channels Cache (60s TTL with Instant Invalidation)
 | - Force Join with 2-Column Grid & Single Fallback (👀 Check)
 | - Manual Payouts Done Control from Admin Panel
 | - Complete Media/Forward Broadcast with Delete Support
@@ -19,6 +22,25 @@ const APP_URL = 'https://star-pay-go71.onrender.com';
 const SUPPORT_USERNAME = 'Sakib_Developer1';
 
 const SUPER_ADMIN_ID = 8045367594;
+
+/*
+|--------------------------------------------------------------------------
+| HIGH-PERFORMANCE IN-MEMORY CACHE STORES
+|--------------------------------------------------------------------------
+*/
+const userChannelCache = new Map();    // key: userId, val: { isMember: boolean, expiresAt: number }
+const settingsCache = new Map();       // key: settingKey, val: { value: any, expiresAt: number }
+let forceChannelsCache = null;         // val: object
+let forceChannelsExpiresAt = 0;
+
+function invalidateUserChannelCache(userId) {
+    userChannelCache.delete(String(userId));
+}
+
+function invalidateForceChannelsCache() {
+    forceChannelsCache = null;
+    forceChannelsExpiresAt = 0;
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -49,12 +71,10 @@ function formatNumber(number) {
     const num = Number(number);
     if (!isFinite(num) || isNaN(num)) return '0';
     
-    // ফ্লোটিং পয়েন্ট বা ৩.৯৯৯৯ জাতীয় তারতম্য দূর করে পূর্ণ সংখ্যা করা
     if (Math.abs(num - Math.round(num)) < 0.005) {
         return Math.round(num).toString();
     }
     
-    // দশমিক থাকলে অপ্রয়োজনীয় শূন্য কেটে সর্বোচ্চ ২ ঘর রাখা
     return (Math.round(num * 100) / 100).toString();
 }
 
@@ -137,7 +157,7 @@ async function firebaseRequest(path, method = 'GET', data = null) {
 
 /*
 |--------------------------------------------------------------------------
-| DATABASE HELPERS
+| DATABASE & CACHED HELPERS
 |--------------------------------------------------------------------------
 */
 async function getUser(userId) {
@@ -154,11 +174,20 @@ async function updateUser(userId, data) {
 }
 
 async function getSetting(key, defaultValue = null) {
+    const now = Date.now();
+    const cached = settingsCache.get(key);
+    if (cached && now < cached.expiresAt) {
+        return cached.value;
+    }
+
     const val = await firebaseRequest(`settings/${key}`);
-    return val === null ? defaultValue : val;
+    const finalVal = val === null ? defaultValue : val;
+    settingsCache.set(key, { value: finalVal, expiresAt: now + 60000 });
+    return finalVal;
 }
 
 async function setSetting(key, value) {
+    settingsCache.set(key, { value, expiresAt: Date.now() + 60000 });
     return (await firebaseRequest(`settings/${key}`, 'PUT', value)) !== null;
 }
 
@@ -172,9 +201,16 @@ async function getAllAdmins() {
     return res && typeof res === 'object' ? res : {};
 }
 
-async function getAllForceChannels() {
+// Cached 60 seconds
+async function getAllForceChannels(forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && forceChannelsCache && now < forceChannelsExpiresAt) {
+        return forceChannelsCache;
+    }
     const res = await firebaseRequest('force_channels');
-    return res && typeof res === 'object' ? res : {};
+    forceChannelsCache = res && typeof res === 'object' ? res : {};
+    forceChannelsExpiresAt = now + 60000;
+    return forceChannelsCache;
 }
 
 async function getWithdrawRequestChannel() {
@@ -463,18 +499,39 @@ async function isJoinedChannel(channel, userId) {
     return false;
 }
 
-async function isUserJoinedAllChannels(userId) {
-    const forceChannels = await getAllForceChannels();
-    const channels = Object.values(forceChannels);
-    if (!channels.length) return true;
+/*
+|--------------------------------------------------------------------------
+| ULTRA-FAST PARALLEL CHANNEL CHECKING WITH 30-SEC TTL IN-MEMORY CACHE
+|--------------------------------------------------------------------------
+*/
+async function isUserJoinedAllChannels(userId, bypassCache = false) {
+    const uidStr = String(userId);
+    const now = Date.now();
 
-    for (const ch of channels) {
-        if (ch && ch.channel_id) {
-            const joined = await isJoinedChannel(ch.channel_id, userId);
-            if (!joined) return false;
+    // In-memory 30-second TTL cache for instant responses
+    if (!bypassCache) {
+        const cached = userChannelCache.get(uidStr);
+        if (cached && now < cached.expiresAt) {
+            return cached.isMember;
         }
     }
-    return true;
+
+    const forceChannels = await getAllForceChannels();
+    const channels = Object.values(forceChannels).filter(ch => ch && ch.channel_id);
+
+    if (!channels.length) {
+        userChannelCache.set(uidStr, { isMember: true, expiresAt: now + 30000 });
+        return true;
+    }
+
+    // High-Performance Parallelization via Promise.all
+    const checkPromises = channels.map(ch => isJoinedChannel(ch.channel_id, uidStr));
+    const results = await Promise.all(checkPromises);
+    const allJoined = results.every(Boolean);
+
+    // Store in 30-sec TTL Cache
+    userChannelCache.set(uidStr, { isMember: allJoined, expiresAt: now + 30000 });
+    return allJoined;
 }
 
 /*
@@ -489,7 +546,7 @@ async function showForceJoin(chatId) {
     const inlineKeyboard = [];
     const total = channelList.length;
 
-    // ২ কলামে বাটন সাজানো হবে
+    // ২ কলামে বাটন সাজানো
     for (let i = 0; i < total; i += 2) {
         if (i + 1 < total) {
             inlineKeyboard.push([
@@ -497,7 +554,6 @@ async function showForceJoin(chatId) {
                 { text: `▶️ ${channelList[i + 1].channel_name || 'Subscribe'}`, url: channelList[i + 1].channel_link }
             ]);
         } else {
-            // বেজোড় হলে শেষ চ্যানেলটি সিঙ্গেল ফুল লাইনে
             inlineKeyboard.push([
                 { text: `📢 ${channelList[i].channel_name || 'Subscribe'}`, url: channelList[i].channel_link }
             ]);
@@ -581,9 +637,10 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // ভেরিফাই চেক হ্যান্ডলার (আইপি ছাড়া সরাসরি ভেরিফাই)
+        // ভেরিফাই চেক হ্যান্ডলার (ক্যাশ বাইপাস করে রিয়েলটাইম ইনস্ট্যান্ট ভেরিফাই)
         if (data === 'verify_join') {
-            const joinedAll = await isUserJoinedAllChannels(fromId);
+            invalidateUserChannelCache(fromId);
+            const joinedAll = await isUserJoinedAllChannels(fromId, true);
             if (!joinedAll) {
                 await answerCallback(callback.id, "❌ আপনি এখনো প্রয়োজনীয় সব চ্যানেলে জয়েন করেননি!", true);
                 return;
@@ -621,7 +678,6 @@ async function handleUpdate(update) {
 
             await updateUser(fromId, userUpdates);
 
-            // রেফারেল বোনাস
             if (user.referred_by && !user.referral_rewarded) {
                 const ref = await getUser(user.referred_by);
                 if (ref) {
@@ -639,27 +695,6 @@ async function handleUpdate(update) {
             if (chatId && messageId) await deleteMessage(chatId, messageId);
 
             await sendMessage(fromId, `✅ <b>ভেরিফিকেশন সফল হয়েছে!</b>\n\nWelcome to ${escapeHtml(BOT_USERNAME)}! 🎉`, await getUserMenu(fromId));
-            return;
-        }
-
-        if (data === 'leaderboard') {
-            const users = await getAllUsers();
-            const sortedUsers = Object.values(users)
-                .filter(u => u && u.total_referrals > 0)
-                .sort((a, b) => Number(b.total_referrals || 0) - Number(a.total_referrals || 0))
-                .slice(0, 10);
-
-            let leaderText = "🏆 <b>TOP REFERRAL LEADERBOARD</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
-            if (!sortedUsers.length) {
-                leaderText += "এখনো কোনো লিডারবোর্ড রেকর্ড নেই।";
-            } else {
-                sortedUsers.forEach((u, i) => {
-                    const medal = i === 0 ? '🥇' : (i === 1 ? '🥈' : (i === 2 ? '🥉' : `<b>${i + 1}.</b>`));
-                    leaderText += `${medal} <b>${escapeHtml(u.first_name || 'User')}</b> — <b>${u.total_referrals}</b> Referrals\n`;
-                });
-            }
-            await answerCallback(callback.id, 'Leaderboard Loaded');
-            await sendMessage(fromId, leaderText);
             return;
         }
 
@@ -899,6 +934,8 @@ async function handleUpdate(update) {
             const removeMatch = data.match(/^removeforce_([A-Za-z0-9_-]+)$/);
             if (removeMatch) {
                 await firebaseRequest(`force_channels/${removeMatch[1]}`, 'DELETE');
+                invalidateForceChannelsCache();
+                userChannelCache.clear();
                 await answerCallback(callback.id, 'Removed');
                 await sendMessage(fromId, "✅ <b>চ্যানেল সফলভাবে রিমুভ করা হয়েছে!</b>", getAdminMenu(isSuperAdmin(fromId)));
                 return;
@@ -998,7 +1035,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ফোস জয়েন চেক
+        // ফাস্ট ফোর্স জয়েন চেক (ক্যাশড ইন-মেমরি)
         if (!isAdm) {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -1061,7 +1098,6 @@ async function handleUpdate(update) {
             if (aState && aState.action && text) {
                 const action = aState.action;
 
-                // ম্যানুয়াল Payouts Done সেট করার স্টেট
                 if (action === 'set_payouts_done') {
                     if (isNumericAmount(text) && Number(text) >= 0) {
                         const formatted = formatNumber(Number(text));
@@ -1178,6 +1214,8 @@ async function handleUpdate(update) {
                         added_by: fromId,
                         added_at: Math.floor(Date.now() / 1000)
                     });
+                    invalidateForceChannelsCache();
+                    userChannelCache.clear();
                     await clearAdminState(fromId);
                     await sendMessage(chatId, "🎉 <b>Force Join Channel Added!</b>", getAdminMenu(isSuperAdmin(fromId)));
                     return;
@@ -1361,6 +1399,7 @@ async function handleUpdate(update) {
             return;
         }
 
+        // লিডারবোর্ড সম্পূর্ণ বাদ দিয়ে শুধু শেয়ার বাটন রাখা হয়েছে
         if (text === '👥 Refer & Earn') {
             const u = await getUser(fromId);
             const refCount = Number(u?.total_referrals || 0);
@@ -1378,7 +1417,7 @@ async function handleUpdate(update) {
 
             await sendMessage(chatId, refMessage, {
                 inline_keyboard: [
-                    [{ text: '🚀 Share', url: shareUrl }, { text: '🏆 Leaderboard', callback_data: 'leaderboard' }]
+                    [{ text: '🚀 Share', url: shareUrl }]
                 ]
             });
             return;
@@ -1414,7 +1453,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // 📊 SYSTEM STATUS HANDLER (এডমিনের সেট করা Payouts Done সরাসরি প্রদর্শন করবে)
+        // 📊 SYSTEM STATUS HANDLER
         if (text === '📊 System Status') {
             const users = await getAllUsers();
             const totalUsersCount = Object.keys(users).length;
@@ -1443,7 +1482,6 @@ async function handleUpdate(update) {
         // ADMIN PANEL BUTTONS
         // ==========================================
         if (isAdm) {
-            // ১. এডমিন Payouts Done সেট করার বাটন
             if (text === '⭐ সেট Payouts Done') {
                 await setAdminState(fromId, 'set_payouts_done');
                 const cur = await getSetting('custom_payouts_done', '0');
