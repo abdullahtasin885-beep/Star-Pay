@@ -1,15 +1,13 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (ULTRA-HIGH PERFORMANCE ENGINE ⚡)
+| AURA STAR PAY BOT (ULTRA-FAST & PRODUCTION READY ⚡)
 | - Super Admin: 8045367594
-| - Sub-300ms Response Times with Promise.all Parallelization
-| - In-Memory Channel Membership Cache (30s TTL with verify_join Bypass)
-| - In-Memory Force Channels Cache (60s TTL with Instant Invalidation)
-| - Force Join with 2-Column Grid & Single Fallback (👀 Check)
-| - Manual Payouts Done Control from Admin Panel
-| - Complete Media/Forward Broadcast with Delete Support
-| - Channel Broadcast Support
-| - Real-time System Status with Customizable Source & Payouts
+| - Exact UI Matching Force Join with "Claim" Button
+| - Channel Broadcast Detailed Live Report with Failure Reasons
+| - Sub-300ms Parallel Channel Checking with Promise.all
+| - In-Memory 30s Membership & 60s Force Channel Caching
+| - Manual Payouts Done & Source Settings from Admin Panel
+| - Complete Media/Forward Broadcast with One-Click Delete
 | - 24/7 Express Server for Render.com
 |--------------------------------------------------------------------------
 */
@@ -30,7 +28,7 @@ const SUPER_ADMIN_ID = 8045367594;
 */
 const userChannelCache = new Map();    // key: userId, val: { isMember: boolean, expiresAt: number }
 const settingsCache = new Map();       // key: settingKey, val: { value: any, expiresAt: number }
-let forceChannelsCache = null;         // val: object
+let forceChannelsCache = null;
 let forceChannelsExpiresAt = 0;
 
 function invalidateUserChannelCache(userId) {
@@ -201,7 +199,6 @@ async function getAllAdmins() {
     return res && typeof res === 'object' ? res : {};
 }
 
-// Cached 60 seconds
 async function getAllForceChannels(forceRefresh = false) {
     const now = Date.now();
     if (!forceRefresh && forceChannelsCache && now < forceChannelsExpiresAt) {
@@ -246,10 +243,11 @@ async function telegramApi(method, params = {}) {
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify(params)
         });
-        if (!res.ok) return { ok: false };
-        return await res.json();
-    } catch {
-        return { ok: false };
+        const json = await res.json().catch(() => null);
+        if (!json) return { ok: false, description: `HTTP ${res.status} error` };
+        return json;
+    } catch (e) {
+        return { ok: false, description: e.message || 'Network request failed' };
     }
 }
 
@@ -508,7 +506,6 @@ async function isUserJoinedAllChannels(userId, bypassCache = false) {
     const uidStr = String(userId);
     const now = Date.now();
 
-    // In-memory 30-second TTL cache for instant responses
     if (!bypassCache) {
         const cached = userChannelCache.get(uidStr);
         if (cached && now < cached.expiresAt) {
@@ -524,52 +521,50 @@ async function isUserJoinedAllChannels(userId, bypassCache = false) {
         return true;
     }
 
-    // High-Performance Parallelization via Promise.all
     const checkPromises = channels.map(ch => isJoinedChannel(ch.channel_id, uidStr));
     const results = await Promise.all(checkPromises);
     const allJoined = results.every(Boolean);
 
-    // Store in 30-sec TTL Cache
     userChannelCache.set(uidStr, { isMember: allJoined, expiresAt: now + 30000 });
     return allJoined;
 }
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN DISPLAY (2-ROW GRID + SINGLE ROW FOR ODD + CHECK BUTTON)
+| FORCE JOIN DISPLAY (EXACT SCREENSHOT MATCH: 2 JOIN BUTTONS + CLAIM)
 |--------------------------------------------------------------------------
 */
-async function showForceJoin(chatId) {
+async function showForceJoin(chatId, firstName = 'User') {
     const forceChannels = await getAllForceChannels();
     const channelList = Object.values(forceChannels).filter(ch => ch && ch.channel_link);
 
     const inlineKeyboard = [];
     const total = channelList.length;
 
-    // ২ কলামে বাটন সাজানো
+    // প্রতি লাইনে ২টা করে 'Join' বাটন (ছবির হুবহু স্টাইল)
     for (let i = 0; i < total; i += 2) {
         if (i + 1 < total) {
             inlineKeyboard.push([
-                { text: `▶️ ${channelList[i].channel_name || 'Subscribe'}`, url: channelList[i].channel_link },
-                { text: `▶️ ${channelList[i + 1].channel_name || 'Subscribe'}`, url: channelList[i + 1].channel_link }
+                { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link },
+                { text: channelList[i + 1].channel_name || 'Join', url: channelList[i + 1].channel_link }
             ]);
         } else {
+            // বেজোড় হলে শেষটি ফুল লাইনে
             inlineKeyboard.push([
-                { text: `📢 ${channelList[i].channel_name || 'Subscribe'}`, url: channelList[i].channel_link }
+                { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link }
             ]);
         }
     }
 
-    // নিচে ছবি অনুযায়ী '👀 Check' বাটন
+    // নিচে ছবির মতো 'Claim' বাটন
     inlineKeyboard.push([
-        { text: '👀 Check', callback_data: 'verify_join' }
+        { text: 'Claim', callback_data: 'verify_join' }
     ]);
 
+    // ছবির হুবহু টেক্সট
     const text =
-        `🌸 <b>Welcome to ${escapeHtml(BOT_USERNAME)}</b>\n\n` +
-        `📝 Finish all required tasks to move ahead\n` +
-        `🔗 Join every channel and visit links\n\n` +
-        `👉 Press <b>[Check]</b> to continue`;
+        `👋 <b>Hello, ${escapeHtml(firstName)}!</b>\n\n` +
+        `📢 <b>Join All Channels To Continue.</b>`;
 
     await sendMessage(chatId, text, { inline_keyboard: inlineKeyboard });
 }
@@ -637,7 +632,7 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // ভেরিফাই চেক হ্যান্ডলার (ক্যাশ বাইপাস করে রিয়েলটাইম ইনস্ট্যান্ট ভেরিফাই)
+        // ভেরিফাই চেক হ্যান্ডলার (Claim বাটনে ক্লিক)
         if (data === 'verify_join') {
             invalidateUserChannelCache(fromId);
             const joinedAll = await isUserJoinedAllChannels(fromId, true);
@@ -758,10 +753,10 @@ async function handleUpdate(update) {
         }
 
         // ==========================================
-        // 📢 ব্রডকাস্ট কনফার্মেশন ও ডিলিট হ্যান্ডলার
+        // 📢 ব্রডকাস্ট কনফার্মেশন ও লাইভ রিপোর্ট
         // ==========================================
         if (await isAdmin(fromId)) {
-            // ইউজার ব্রডকাস্ট Send
+            // ১. ইউজার ব্রডকাস্ট Send
             if (data === 'confirm_broadcast_users') {
                 const aState = await getAdminState(fromId);
                 if (!aState || aState.action !== 'confirm_broadcast_users') {
@@ -807,7 +802,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // চ্যানেল ব্রডকাস্ট Send
+            // ২. চ্যানেল ব্রডকাস্ট Send (লাইভ ও বিস্তারিত কারণসহ রিপোর্ট)
             if (data === 'confirm_broadcast_channels') {
                 const aState = await getAdminState(fromId);
                 if (!aState || aState.action !== 'confirm_broadcast_channels') {
@@ -819,22 +814,33 @@ async function handleUpdate(update) {
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
 
                 const channels = await getAllForceChannels();
+                const channelList = Object.values(channels).filter(ch => ch && ch.channel_id);
+
+                if (!channelList.length) {
+                    await sendMessage(chatId, "⚠️ কোনো Force Join Channel ডাটাবেজে পাওয়া যায়নি।", getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
+
                 let success = 0, failed = 0;
                 const sentRecords = {};
+                let reportDetails = '';
 
-                for (const ch of Object.values(channels)) {
-                    if (ch && ch.channel_id) {
-                        try {
-                            const res = await copyMessage(ch.channel_id, aState.from_chat_id, aState.message_id);
-                            if (res && res.ok && res.result?.message_id) {
-                                success++;
-                                sentRecords[ch.channel_id] = res.result.message_id;
-                            } else {
-                                failed++;
-                            }
-                        } catch {
+                for (const ch of channelList) {
+                    const cName = ch.channel_name || ch.channel_id;
+                    try {
+                        const res = await copyMessage(ch.channel_id, aState.from_chat_id, aState.message_id);
+                        if (res && res.ok && res.result?.message_id) {
+                            success++;
+                            sentRecords[ch.channel_id] = res.result.message_id;
+                            reportDetails += `\n✅ <b>${escapeHtml(cName)}</b> (<code>${escapeHtml(ch.channel_id)}</code>)\n   └ 🟢 <b>স্ট্যাটাস:</b> সফলভাবে পোস্ট হয়েছে!`;
+                        } else {
                             failed++;
+                            const reason = res?.description || 'Unknown error / Bot is not admin';
+                            reportDetails += `\n❌ <b>${escapeHtml(cName)}</b> (<code>${escapeHtml(ch.channel_id)}</code>)\n   └ 🔴 <b>পোস্ট না হওয়ার কারণ:</b> <code>${escapeHtml(reason)}</code>`;
                         }
+                    } catch (err) {
+                        failed++;
+                        reportDetails += `\n❌ <b>${escapeHtml(cName)}</b> (<code>${escapeHtml(ch.channel_id)}</code>)\n   └ 🔴 <b>পোস্ট না হওয়ার কারণ:</b> <code>${escapeHtml(err.message || 'Connection error')}</code>`;
                     }
                 }
 
@@ -845,13 +851,21 @@ async function handleUpdate(update) {
                     created_at: Math.floor(Date.now() / 1000)
                 });
 
+                const summaryMessage =
+                    `📢 <b>চ্যানেল ব্রডকাস্ট লাইভ রিপোর্ট</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+                    `📊 <b>মোট চ্যানেল:</b> <b>${channelList.length}</b>\n` +
+                    `✅ <b>সফল:</b> <b>${success}</b> টি চ্যানেল\n` +
+                    `❌ <b>ব্যর্থ:</b> <b>${failed}</b> টি চ্যানেল\n\n` +
+                    `📋 <b>প্রতিটি চ্যানেলের বিস্তারিত রিপোর্ট:</b>\n${reportDetails}\n\n` +
+                    `<i>ভুল করে পোস্ট হয়ে গেলে নিচের বাটন চেপে সবগুলো চ্যানেল থেকে এক ক্লিকে ডিলিট করতে পারবেন।</i>`;
+
                 const deleteKeyboard = {
                     inline_keyboard: [
                         [{ text: '🗑️ Delete Channel Broadcast', callback_data: `delete_bc_${bId}` }]
                     ]
                 };
 
-                await sendMessage(chatId, `📢 <b>চ্যানেল ব্রডকাস্ট সম্পন্ন!</b>\n\n✅ সফল চ্যানেল: <b>${success}</b>\n❌ ব্যর্থ: <b>${failed}</b>\n\n<i>ভুল করে গেলে নিচের বাটন চেপে ডিলিট করতে পারবেন।</i>`, deleteKeyboard);
+                await sendLongMessage(chatId, summaryMessage, deleteKeyboard);
                 return;
             }
 
@@ -1035,11 +1049,11 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ফাস্ট ফোর্স জয়েন চেক (ক্যাশড ইন-মেমরি)
+        // ফাস্ট ফোর্স জয়েন চেক (ছবির স্টাইলে)
         if (!isAdm) {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
-                await showForceJoin(chatId);
+                await showForceJoin(chatId, msg.from.first_name);
                 return;
             }
         }
@@ -1050,7 +1064,7 @@ async function handleUpdate(update) {
         if (isAdm) {
             const aState = await getAdminState(fromId);
 
-            // ১. ইউজার ব্রডকাস্ট ইনপুট (যেকোনো মিডিয়া / ফরওয়ার্ড)
+            // ১. ইউজার ব্রডকাস্ট ইনপুট
             if (aState && aState.action === 'awaiting_broadcast_message') {
                 await setAdminState(fromId, 'confirm_broadcast_users', {
                     from_chat_id: chatId,
@@ -1072,7 +1086,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // ২. চ্যানেল ব্রডকাস্ট ইনপুট (যেকোনো মিডিয়া / ফরওয়ার্ড)
+            // ২. চ্যানেল ব্রডকাস্ট ইনপুট
             if (aState && aState.action === 'awaiting_channel_broadcast_message') {
                 await setAdminState(fromId, 'confirm_broadcast_channels', {
                     from_chat_id: chatId,
@@ -1202,7 +1216,7 @@ async function handleUpdate(update) {
                     let link = text.trim();
                     if (link.startsWith('@')) link = 'https://t.me/' + link.slice(1);
                     await setAdminState(fromId, 'add_force_channel_name', { channel_id: aState.channel_id, channel_link: link });
-                    await sendMessage(chatId, "🔘 <b>Button Name দিন (যেমন: Subscribe):</b>", getCancelKeyboard());
+                    await sendMessage(chatId, "🔘 <b>Button Name দিন (যেমন: Join):</b>", getCancelKeyboard());
                     return;
                 }
 
@@ -1399,7 +1413,6 @@ async function handleUpdate(update) {
             return;
         }
 
-        // লিডারবোর্ড সম্পূর্ণ বাদ দিয়ে শুধু শেয়ার বাটন রাখা হয়েছে
         if (text === '👥 Refer & Earn') {
             const u = await getUser(fromId);
             const refCount = Number(u?.total_referrals || 0);
