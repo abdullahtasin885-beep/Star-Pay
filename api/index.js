@@ -1,24 +1,21 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (100% PRODUCTION READY & STRICT SECURITY 🔒)
+| AURA STAR PAY BOT (PRODUCTION READY ⚡)
 | - Super Admin: 8045367594
-| - Strict Anti-Multi-Account (Hardware Fingerprinting)
-| - Admin Device Rule: Admin Account + Exactly 1 Normal Account Allowed
-| - Strict Force Join: Menu locks instantly if user leaves any channel
-| - Payment Channel separated from mandatory force join
+| - Force Join with 2-Column Grid & Single Fallback
+| - Complete Media/Forward Broadcast with Delete Support
+| - Channel Broadcast Support
+| - Real-time System Status with Customizable Source
 | - 24/7 Express Server for Render.com
-| - Live Telegram Profile Photo in Mini App
-| - Auto Delete Verification Prompt on Success/Reject
 |--------------------------------------------------------------------------
 */
 
 const express = require('express');
-const crypto = require('crypto');
 
 const BOT_TOKEN = '8809628706:AAFABbmhw3fPakfRLPBbmIQt77qsPlLR48A';
 const BOT_USERNAME = 'AuraStarPayBot';
 const APP_URL = 'https://star-pay-go71.onrender.com';
-const SUPPORT_USERNAME = 'Sakib_Developer1'; // Support username without @
+const SUPPORT_USERNAME = 'Sakib_Developer1';
 
 const SUPER_ADMIN_ID = 8045367594;
 
@@ -31,11 +28,10 @@ const FIREBASE_URL = 'https://aura-star-pay-default-rtdb.firebaseio.com';
 const FIREBASE_API_KEY = 'AIzaSyDq337oNcs6G7m3ahBnOhnHzgBhzr892GU';
 const FIREBASE_AUTH_EMAIL = 'sakib301210@gmail.com';
 const FIREBASE_AUTH_PASSWORD = '@mayabiri';
-const FIREBASE_AUTH_UID = 'WUVFzcS2jvXDXgGfUAQPl9ESl943';
 
 /*
 |--------------------------------------------------------------------------
-| BASIC HELPERS & CRYPTOGRAPHY
+| BASIC HELPERS
 |--------------------------------------------------------------------------
 */
 function escapeHtml(text) {
@@ -50,11 +46,11 @@ function escapeHtml(text) {
 
 function formatNumber(number) {
     const num = Number(number);
-    if (!isFinite(num)) return 'Unlimited';
+    if (!isFinite(num)) return '0';
     if (Math.abs(num - Math.round(num)) < 0.0000001) {
         return Math.round(num).toString();
     }
-    return parseFloat(num.toFixed(8)).toString();
+    return parseFloat(num.toFixed(4)).toString();
 }
 
 function normalizeText(text) {
@@ -68,34 +64,9 @@ function isNumericAmount(value) {
     return str !== '' && !isNaN(Number(str)) && isFinite(Number(str));
 }
 
-function formatDate(timestamp) {
-    return new Date(timestamp * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatTime(timestamp) {
-    return new Date(timestamp * 1000).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
-}
-
-function sha256(data) {
-    return crypto.createHash('sha256').update(String(data)).digest('hex');
-}
-
-function generateVerificationSignature(userId, timestamp) {
-    return crypto.createHmac('sha256', BOT_TOKEN).update(`${userId}_${timestamp}`).digest('hex');
-}
-
-function verifySignature(userId, timestamp, signature) {
-    try {
-        const expected = generateVerificationSignature(userId, timestamp);
-        return crypto.timingSafeEqual(Buffer.from(signature || '', 'hex'), Buffer.from(expected, 'hex'));
-    } catch {
-        return false;
-    }
-}
-
 /*
 |--------------------------------------------------------------------------
-| FIREBASE REST API CLIENT
+| FIREBASE REST CLIENT
 |--------------------------------------------------------------------------
 */
 let cachedToken = null;
@@ -186,10 +157,6 @@ async function setSetting(key, value) {
     return (await firebaseRequest(`settings/${key}`, 'PUT', value)) !== null;
 }
 
-async function deleteSetting(key) {
-    return (await firebaseRequest(`settings/${key}`, 'DELETE')) !== null;
-}
-
 async function getAllUsers() {
     const res = await firebaseRequest('users');
     return res && typeof res === 'object' ? res : {};
@@ -203,12 +170,6 @@ async function getAllAdmins() {
 async function getAllForceChannels() {
     const res = await firebaseRequest('force_channels');
     return res && typeof res === 'object' ? res : {};
-}
-
-async function getPaymentVerificationChannel() {
-    let raw = await getSetting('payment_verification_channel', '');
-    if (Array.isArray(raw)) raw = raw[0];
-    return String(raw || '').trim();
 }
 
 async function getWithdrawRequestChannel() {
@@ -272,6 +233,16 @@ async function sendReplyMessage(chatId, replyToMessageId, text, replyMarkup = nu
     };
     if (replyMarkup) params.reply_markup = replyMarkup;
     return await telegramApi('sendMessage', params);
+}
+
+async function copyMessage(chatId, fromChatId, messageId, replyMarkup = null) {
+    const params = {
+        chat_id: chatId,
+        from_chat_id: fromChatId,
+        message_id: messageId
+    };
+    if (replyMarkup) params.reply_markup = replyMarkup;
+    return await telegramApi('copyMessage', params);
 }
 
 async function deleteMessage(chatId, messageId) {
@@ -357,7 +328,7 @@ async function getUserMenu(userId) {
     const keyboard = [
         [{ text: '👤 My Account' }, { text: '👥 Refer & Earn' }],
         [{ text: '💸 Withdraw' }, { text: '📜 History' }],
-        [{ text: '🎁 Gift Code' }]
+        [{ text: '📊 System Status' }]
     ];
     if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
@@ -367,8 +338,8 @@ function getAdminMenu(superAdmin) {
     const keyboard = [
         [{ text: '📊 পরিসংখ্যান' }, { text: '👥 User & Balance Management' }],
         [{ text: '💸 Withdraw Settings' }, { text: '📢 Channel Settings' }],
-        [{ text: '🎁 বোনাস সেটিংস' }, { text: '🎁 Gift Code' }],
-        [{ text: '📢 ব্রডকাস্ট' }, { text: '🛡️ রিস্টার্ট অল ভেরিফিকেশন' }]
+        [{ text: '🎁 বোনাস সেটিংস' }, { text: '🔧 Source Settings' }],
+        [{ text: '📢 ব্রডকাস্ট' }, { text: '📢 চ্যানেল ব্রডকাস্ট' }]
     ];
     if (superAdmin) keyboard.push([{ text: '👮 এডমিন ম্যানেজমেন্ট' }]);
     keyboard.push([{ text: '🔙 ইউজার প্যানেলে ফিরে যান' }]);
@@ -432,17 +403,6 @@ function withdrawSettingsKeyboard() {
     };
 }
 
-function giftKeyboard() {
-    return {
-        inline_keyboard: [
-            [
-                { text: '➕ নতুন Gift Code', callback_data: 'gift_create' },
-                { text: '📋 Gift Code তালিকা', callback_data: 'gift_list' }
-            ]
-        ]
-    };
-}
-
 function withdrawActionKeyboard(withdrawId) {
     const claimUrl = `https://t.me/${BOT_USERNAME}?start=claim`;
     return {
@@ -478,11 +438,6 @@ function isValidTelegramUsername(username) {
     return /^@[A-Za-z0-9_]{5,32}$/.test(username);
 }
 
-function isValidChannelTarget(channel) {
-    channel = channel.trim();
-    return /^@[A-Za-z0-9_]{5,32}$/.test(channel) || /^-100[0-9]{5,20}$/.test(channel);
-}
-
 async function getTelegramChat(chatId) {
     const res = await telegramApi('getChat', { chat_id: chatId });
     return res && res.ok ? res.result : null;
@@ -503,7 +458,6 @@ async function isJoinedChannel(channel, userId) {
     return false;
 }
 
-// শুধুমাত্র অ্যাডমিনের যোগ করা ফোর্স চ্যানেলগুলো চেক করা হবে
 async function isUserJoinedAllChannels(userId) {
     const forceChannels = await getAllForceChannels();
     const channels = Object.values(forceChannels);
@@ -520,64 +474,43 @@ async function isUserJoinedAllChannels(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN & VERIFICATION FLOW
+| FORCE JOIN DISPLAY (2-ROW GRID + SINGLE ROW FOR ODD + CHECK BUTTON)
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId) {
     const forceChannels = await getAllForceChannels();
-    const keyboard = [];
+    const channelList = Object.values(forceChannels).filter(ch => ch && ch.channel_link);
 
-    for (const ch of Object.values(forceChannels)) {
-        if (ch && ch.channel_link) {
-            keyboard.push([{ text: `📢 ${ch.channel_name || 'Join Channel'}`, url: ch.channel_link }]);
+    const inlineKeyboard = [];
+    const total = channelList.length;
+
+    // প্রতি লাইনে ২ টা করে সাজানো হবে
+    for (let i = 0; i < total; i += 2) {
+        if (i + 1 < total) {
+            inlineKeyboard.push([
+                { text: `▶️ ${channelList[i].channel_name || 'Subscribe'}`, url: channelList[i].channel_link },
+                { text: `▶️ ${channelList[i + 1].channel_name || 'Subscribe'}`, url: channelList[i + 1].channel_link }
+            ]);
+        } else {
+            // বেজোড় থাকলে শেষ চ্যানেলটি ফুল লাইনে (ছবির মতো)
+            inlineKeyboard.push([
+                { text: `📢 ${channelList[i].channel_name || 'Subscribe'}`, url: channelList[i].channel_link }
+            ]);
         }
     }
 
-    keyboard.push([{ text: '✅ Verify', callback_data: 'verify_join' }]);
-    const text = 
-        "📢 <b>Please join our official channels first to continue.</b>\n\n" +
-        "নিচের সবকটি চ্যানেলে জয়েন করার পর <b>✅ Verify</b> বাটনে চাপ দিন:";
-    await sendMessage(chatId, text, { inline_keyboard: keyboard });
-}
+    // নিচে ছবি অনুযায়ী '👀 Check' বাটন
+    inlineKeyboard.push([
+        { text: '👀 Check', callback_data: 'verify_join' }
+    ]);
 
-async function sendDeviceVerificationPrompt(chatId, userId, firstName) {
-    const oldPrompt = await firebaseRequest(`verify_prompts/${userId}`);
-    if (oldPrompt && oldPrompt.chat_id && oldPrompt.message_id) {
-        try { await deleteMessage(oldPrompt.chat_id, oldPrompt.message_id); } catch {}
-    }
+    const text =
+        `🌸 <b>Welcome to ${escapeHtml(BOT_USERNAME)}</b>\n\n` +
+        `📝 Finish all required tasks to move ahead\n` +
+        `🔗 Join every channel and visit links\n\n` +
+        `👉 Press <b>[Check]</b> to continue`;
 
-    const now = Math.floor(Date.now() / 1000);
-    const signature = generateVerificationSignature(userId, now);
-    const verifyUrl = `${APP_URL}/api/index?action=verify_flow&uid=${userId}&name=${encodeURIComponent(firstName || 'User')}&t=${now}&sig=${signature}`;
-
-    const text = 
-        "🔐 <b>Device Security Scan</b>\n━━━━━━━━━━━━━━━━━━\n\n" +
-        "Please complete quick device verification to unlock all bot features:";
-
-    const keyboard = {
-        inline_keyboard: [
-            [{ text: '🔐 Verify Account & Device', web_app: { url: verifyUrl } }]
-        ]
-    };
-
-    const sent = await sendMessage(chatId, text, keyboard);
-    if (sent && sent.ok && sent.result?.message_id) {
-        await firebaseRequest(`verify_prompts/${userId}`, 'PUT', {
-            chat_id: chatId,
-            message_id: sent.result.message_id,
-            created_at: now
-        });
-    }
-}
-
-async function deleteVerificationPrompt(userId) {
-    try {
-        const prompt = await firebaseRequest(`verify_prompts/${userId}`);
-        if (prompt && prompt.chat_id && prompt.message_id) {
-            await deleteMessage(prompt.chat_id, prompt.message_id);
-            await firebaseRequest(`verify_prompts/${userId}`, 'DELETE');
-        }
-    } catch {}
+    await sendMessage(chatId, text, { inline_keyboard: inlineKeyboard });
 }
 
 /*
@@ -632,456 +565,6 @@ function buildRejectedAlertText(withdraw, adminUsername) {
 
 /*
 |--------------------------------------------------------------------------
-| ANTI-MULTI-ACCOUNT SUBMISSION (STRICT ADMIN & USER RULES)
-|--------------------------------------------------------------------------
-*/
-async function handleDeviceVerificationSubmit(req, res) {
-    try {
-        const body = req.body || {};
-        const { uid, t, sig, device_token, hardware_id } = body;
-
-        if (!uid || !t || !sig || !hardware_id) {
-            return res.status(400).json({ success: false, message: 'Invalid payload' });
-        }
-
-        const now = Math.floor(Date.now() / 1000);
-        if (Math.abs(now - Number(t)) > 3600) {
-            return res.status(403).json({ success: false, message: 'Session expired' });
-        }
-        if (!verifySignature(uid, t, sig)) {
-            return res.status(403).json({ success: false, message: 'Invalid signature' });
-        }
-
-        let user = await getUser(uid);
-        if (!user) {
-            user = {
-                telegram_id: String(uid),
-                first_name: 'User',
-                balance: 0,
-                verification_status: 'pending_channel',
-                is_verified: false,
-                created_at: now
-            };
-            await setUser(uid, user);
-        }
-
-        // যদি ইউজার আগেই ভেরিফাইড থাকে
-        if (user.verification_status === 'verified') {
-            await deleteVerificationPrompt(uid);
-            return res.status(200).json({ success: true, already_verified: true });
-        }
-
-        // ইতিমধ্যে ব্লকড ইউজার হলে
-        if (user.verification_status === 'multiple_account_blocked' || user.verification_status === 'manually_blocked') {
-            await deleteVerificationPrompt(uid);
-            return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
-        }
-
-        // ফোর্স চ্যানেলগুলো পুরোপুরি জয়েন করেছে কি না নিশ্চিত করা
-        const joinedAll = await isUserJoinedAllChannels(uid);
-        if (!joinedAll) {
-            return res.status(400).json({ success: false, reason: 'CHANNEL_NOT_JOINED', message: 'Please join all required channels first.' });
-        }
-
-        const isUserAdmin = isSuperAdmin(uid) || (await isAdmin(uid));
-        const deviceTokenHash = sha256(device_token || hardware_id);
-
-        // ডিভাইস ডাটাবেজ চেক
-        const registeredDevice = await firebaseRequest(`registered_devices/${hardware_id}`);
-        const registeredToken = await firebaseRequest(`registered_tokens/${deviceTokenHash}`);
-
-        let isBlocked = false;
-        let blockedReason = '';
-
-        if (isUserAdmin) {
-            // অ্যাডমিন তার ডিভাইসে ভেরিফাই হলে ডিভাইসকে অ্যাডমিন ডিভাইস হিসেবে ফ্ল্যাগ করা
-            const existingUsers = Array.isArray(registeredDevice?.users) ? registeredDevice.users : (registeredDevice?.user_id ? [registeredDevice.user_id] : []);
-            if (!existingUsers.includes(String(uid))) existingUsers.push(String(uid));
-
-            await firebaseRequest(`registered_devices/${hardware_id}`, 'PUT', {
-                is_admin_device: true,
-                admin_uid: String(uid),
-                users: existingUsers,
-                updated_at: now
-            });
-            await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', {
-                is_admin_device: true,
-                admin_uid: String(uid),
-                users: existingUsers,
-                updated_at: now
-            });
-        } else {
-            // সাধারণ ইউজারের ক্ষেত্রে
-            const deviceData = registeredDevice || registeredToken;
-
-            if (deviceData) {
-                const isAdminDevice = Boolean(deviceData.is_admin_device);
-                const usersList = Array.isArray(deviceData.users) ? deviceData.users.map(String) : (deviceData.user_id ? [String(deviceData.user_id)] : []);
-
-                if (isAdminDevice) {
-                    // অ্যাডমিন ডিভাইস রুল: অ্যাডমিন আইডি ছাড়া অন্য সাধারণ অ্যাকাউন্ট সর্বোচ্চ ১টি থাকতে পারবে
-                    const adminUid = String(deviceData.admin_uid || SUPER_ADMIN_ID);
-                    const normalUsers = usersList.filter(id => id !== adminUid);
-
-                    if (normalUsers.length >= 1 && !normalUsers.includes(String(uid))) {
-                        isBlocked = true;
-                        blockedReason = 'Admin device limit reached (Only 1 additional normal account allowed)';
-                    }
-                } else {
-                    // সাধারণ ডিভাইস রুল: ১টি ডিভাইসে মাত্র ১টি অ্যাকাউন্ট। অন্য আইডি দিয়ে ঢুকলে নতুনটি ব্লক হবে।
-                    if (usersList.length >= 1 && !usersList.includes(String(uid))) {
-                        isBlocked = true;
-                        blockedReason = `Device already registered with verified user ${usersList[0]}`;
-                    }
-                }
-            }
-
-            if (isBlocked) {
-                // নতুন আইডির ভেরিফিকেশন ব্লক করা (আগের আসল ইউজার অক্ষত থাকবে)
-                await updateUser(uid, {
-                    verification_status: 'multiple_account_blocked',
-                    blocked_reason: blockedReason,
-                    is_verified: false,
-                    updated_at: now
-                });
-
-                await deleteVerificationPrompt(uid);
-
-                const blockMsg = 
-                    "🚫 <b>Multiple Account Detected</b>\n\n" +
-                    "Multiple accounts are strictly not allowed on the same device.\n\n" +
-                    "Your account has been blocked because another account is already verified on this device.\n\n" +
-                    "If you believe this is a mistake, please contact support.";
-                await sendMessage(uid, blockMsg, {
-                    inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
-                });
-
-                return res.status(403).json({ success: false, reason: 'MULTIPLE_ACCOUNT_BLOCKED' });
-            }
-
-            // ডিভাইস ডাটাবেজে এই নতুন ইউজার যুক্ত করা
-            const currentUsers = Array.isArray(deviceData?.users) ? deviceData.users.map(String) : [];
-            if (!currentUsers.includes(String(uid))) currentUsers.push(String(uid));
-
-            const savePayload = {
-                is_admin_device: Boolean(deviceData?.is_admin_device),
-                admin_uid: deviceData?.admin_uid || null,
-                users: currentUsers,
-                updated_at: now
-            };
-
-            await firebaseRequest(`registered_devices/${hardware_id}`, 'PUT', savePayload);
-            await firebaseRequest(`registered_tokens/${deviceTokenHash}`, 'PUT', savePayload);
-        }
-
-        // ইউজারের ভেরিফিকেশন তথ্য সেভ করা
-        await firebaseRequest(`user_verifications/${uid}`, 'PUT', {
-            telegram_id: String(uid),
-            username: String(user.username || ''),
-            hardware_id: hardware_id,
-            verification_status: 'verified',
-            first_verified_at: now,
-            last_verified_at: now,
-            updated_at: now
-        });
-
-        const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
-        let newBalance = Number(user.balance || 0);
-
-        const userUpdates = {
-            verification_status: 'verified',
-            is_verified: true,
-            verified_at: now
-        };
-
-        if (!user.welcome_claimed) {
-            newBalance += welcomeBonus;
-            userUpdates.balance = newBalance;
-            userUpdates.welcome_claimed = true;
-        }
-
-        await updateUser(uid, userUpdates);
-
-        // রেফারেল বোনাস বণ্টন
-        if (user.referred_by && !user.referral_rewarded) {
-            const ref = await getUser(user.referred_by);
-            if (ref && ref.verification_status === 'verified') {
-                const refBonus = Number(await getSetting('referral_bonus', 0));
-                await updateUser(user.referred_by, {
-                    balance: Number(ref.balance || 0) + refBonus,
-                    total_referrals: Number(ref.total_referrals || 0) + 1
-                });
-                await updateUser(uid, { referral_rewarded: true });
-                await sendMessage(user.referred_by, `🎉 <b>New Referral Verified!</b>\n━━━━━━━━━━━━━━━━━━\n\nYour referred user has completed verification!\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>\n👥 Total Referrals: <b>${Number(ref.total_referrals || 0) + 1}</b>`);
-            }
-        }
-
-        await deleteVerificationPrompt(uid);
-
-        const successMsg = "✅ <b>Verification Successful</b>\n\nYour Telegram account and device have been successfully verified.\n\nWelcome! 🎉";
-        await sendMessage(uid, successMsg);
-
-        const mainMenuPrompt = `🏠 <b>Main Menu</b>\n━━━━━━━━━━━━━━━━━━\n🌟 <i>যেকোনো সুবিধা পেতে নিচের মেনু অপশনগুলো ব্যবহার করুন।</i>`;
-        await sendMessage(uid, mainMenuPrompt, await getUserMenu(uid));
-
-        return res.status(200).json({ success: true, message: 'VERIFIED' });
-    } catch (e) {
-        return res.status(500).json({ success: false, message: 'Server error' });
-    }
-}
-
-/*
-|--------------------------------------------------------------------------
-| MINI APP HTML (WITH DEEP HARDWARE FINGERPRINTING)
-|--------------------------------------------------------------------------
-*/
-function renderMiniAppPage(uid, name, t, sig) {
-    const displayName = escapeHtml(decodeURIComponent(name || 'User'));
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SECURITY SCAN</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
-        body { background: #070d18; color: #ffffff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; overflow: hidden; }
-        .main-card { background: linear-gradient(180deg, #111b2e 0%, #0b1220 100%); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 28px; width: 100%; max-width: 380px; padding: 24px 20px 30px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); }
-        .user-header { width: 100%; display: flex; align-items: center; justify-content: space-between; padding-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); margin-bottom: 25px; }
-        .user-info { display: flex; align-items: center; gap: 12px; }
-        .avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #38bdf8, #2563eb); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; color: #fff; overflow: hidden; }
-        .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-        .user-details h3 { font-size: 16px; font-weight: 600; color: #f8fafc; }
-        .user-details p { font-size: 12px; color: #64748b; margin-top: 2px; }
-        .theme-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: #94a3b8; padding: 6px 14px; border-radius: 20px; font-size: 12px; }
-        .status-badge { padding: 5px 16px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; margin-bottom: 30px; }
-        .status-badge.scanning { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
-        .status-badge.processing { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
-        .status-badge.verified { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
-        .status-badge.blocked { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-        .circle-icon-wrapper { width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, rgba(30, 58, 102, 0.5) 0%, rgba(15, 23, 42, 0.8) 100%); border: 2px solid rgba(56, 189, 248, 0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 30px; position: relative; }
-        .circle-icon-wrapper.pulse::after { content: ''; position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 2px solid #38bdf8; animation: ripple 1.6s ease-out infinite; }
-        @keyframes ripple { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.4); opacity: 0; } }
-        .icon-svg { width: 52px; height: 52px; fill: none; }
-        .title { font-size: 22px; font-weight: 700; color: #ffffff; margin-bottom: 8px; }
-        .subtitle { font-size: 13px; color: #94a3b8; margin-bottom: 35px; text-align: center; }
-        .action-btn { width: 100%; padding: 16px; border-radius: 16px; font-size: 15px; font-weight: 600; border: none; cursor: default; text-align: center; text-decoration: none; }
-        .btn-disabled { background: #131d2e; color: #475569; }
-        .btn-active { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; cursor: pointer; }
-        .btn-danger { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: #ffffff; cursor: pointer; }
-    </style>
-</head>
-<body>
-    <div class="main-card">
-        <div class="user-header">
-            <div class="user-info">
-                <div class="avatar" id="userAvatar">${displayName.charAt(0).toUpperCase()}</div>
-                <div class="user-details">
-                    <h3>${displayName}</h3>
-                    <p>ID: ${uid}</p>
-                </div>
-            </div>
-            <div class="theme-btn">✨ Theme</div>
-        </div>
-
-        <div id="badgeEl" class="status-badge scanning"><span style="font-size: 8px;">●</span> SCANNING</div>
-
-        <div id="iconWrapper" class="circle-icon-wrapper pulse">
-            <svg id="iconEl" class="icon-svg" viewBox="0 0 24 24" stroke="#60a5fa" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01"/>
-            </svg>
-        </div>
-
-        <h2 id="titleEl" class="title">Hardware Scan</h2>
-        <p id="subEl" class="subtitle">Analyzing hardware signatures...</p>
-        <button id="actionBtn" class="action-btn btn-disabled">Awaiting Verification</button>
-    </div>
-
-    <script>
-        (function() {
-            var script = document.createElement('script');
-            script.src = "https://telegram.org/js/telegram-web-app.js";
-            script.async = true;
-            document.head.appendChild(script);
-        })();
-
-        function loadUserProfilePhoto() {
-            try {
-                var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-                var photoUrl = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.photo_url : null;
-                var av = document.getElementById('userAvatar');
-                if (photoUrl) {
-                    av.innerHTML = '<img src="' + photoUrl + '" alt="Avatar" onerror="this.remove();">';
-                } else {
-                    var proxyImg = new Image();
-                    proxyImg.onload = function() { av.innerHTML = '<img src="/api/index?action=avatar&uid=${uid}" alt="Avatar" onerror="this.remove();">'; };
-                    proxyImg.src = "/api/index?action=avatar&uid=${uid}";
-                }
-            } catch(e) {}
-        }
-
-        async function sha256Browser(str) {
-            try {
-                var buffer = new TextEncoder().encode(str);
-                var hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-                return Array.from(new Uint8Array(hashBuffer)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
-            } catch(e) {
-                return 'h_' + btoa(str).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-            }
-        }
-
-        function getDeepHardwareFingerprint() {
-            var glRenderer = 'none';
-            try {
-                var canvas = document.createElement('canvas');
-                var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                if (gl) {
-                    var debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (debugInfo) {
-                        glRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) + '|||' + gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-                    }
-                }
-            } catch(e) {}
-
-            var canvasData = 'none';
-            try {
-                var c = document.createElement('canvas');
-                c.width = 240; c.height = 60;
-                var ctx = c.getContext('2d');
-                ctx.textBaseline = "alphabetic";
-                ctx.fillStyle = "#f60";
-                ctx.fillRect(100, 5, 80, 30);
-                ctx.fillStyle = "#069";
-                ctx.font = "15px 'Arial'";
-                ctx.fillText("StarPayHardwareFingerprint,885", 2, 15);
-                canvasData = c.toDataURL();
-            } catch(e) {}
-
-            var screenInfo = screen.width + "x" + screen.height + "x" + screen.colorDepth + "@" + (window.devicePixelRatio || 1);
-            var cores = navigator.hardwareConcurrency || 1;
-            var memory = navigator.deviceMemory || 'na';
-            var touches = navigator.maxTouchPoints || 0;
-            var platform = navigator.platform || '';
-            var timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-
-            return [glRenderer, canvasData, screenInfo, cores, memory, touches, platform, timezone].join('###');
-        }
-
-        async function startVerification() {
-            loadUserProfilePhoto();
-            var tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-            if (tg) { try { tg.ready(); tg.expand(); } catch(e) {} }
-
-            var badgeEl = document.getElementById('badgeEl');
-            var iconWrapper = document.getElementById('iconWrapper');
-            var iconEl = document.getElementById('iconEl');
-            var titleEl = document.getElementById('titleEl');
-            var subEl = document.getElementById('subEl');
-            var actionBtn = document.getElementById('actionBtn');
-
-            var deviceToken = localStorage.getItem('tg_device_token') || sessionStorage.getItem('tg_device_token');
-            if (!deviceToken) {
-                deviceToken = 'dt_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
-                try { localStorage.setItem('tg_device_token', deviceToken); } catch(e) {}
-            }
-
-            await new Promise(function(r) { setTimeout(r, 900); });
-
-            badgeEl.className = "status-badge processing";
-            badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> PROCESSING";
-            titleEl.innerText = "Scanning Device";
-            subEl.innerText = "Locking hardware fingerprint...";
-            iconEl.setAttribute('stroke', '#22d3ee');
-
-            var rawHardware = getDeepHardwareFingerprint();
-            var hardwareId = await sha256Browser(rawHardware);
-
-            var payload = {
-                uid: "${uid}",
-                t: "${t}",
-                sig: "${sig}",
-                device_token: deviceToken,
-                hardware_id: hardwareId
-            };
-
-            try {
-                var res = await fetch('/api/index', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                var data = await res.json();
-
-                await new Promise(function(r) { setTimeout(r, 800); });
-                iconWrapper.classList.remove('pulse');
-
-                if (data.success) {
-                    badgeEl.className = "status-badge verified";
-                    badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> VERIFIED";
-                    titleEl.innerText = "Verification Complete";
-                    subEl.innerText = "Device secured and profile verified.";
-                    iconEl.setAttribute('stroke', '#4ade80');
-                    actionBtn.className = "action-btn btn-active";
-                    actionBtn.innerText = "Return To Bot";
-                    actionBtn.onclick = function() {
-                        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.close) {
-                            window.Telegram.WebApp.close();
-                        } else {
-                            window.location.href = "https://t.me/${BOT_USERNAME}";
-                        }
-                    };
-                } else if (data.reason === 'MULTIPLE_ACCOUNT_BLOCKED') {
-                    badgeEl.className = "status-badge blocked";
-                    badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> BLOCKED";
-                    titleEl.innerText = "Multiple Account Detected";
-                    subEl.innerText = "Multiple accounts are not allowed on this device.";
-                    iconEl.setAttribute('stroke', '#f87171');
-                    actionBtn.className = "action-btn btn-danger";
-                    actionBtn.innerText = "Contact Support";
-                    actionBtn.onclick = function() { window.location.href = "https://t.me/${SUPPORT_USERNAME}"; };
-                } else if (data.reason === 'CHANNEL_NOT_JOINED') {
-                    badgeEl.className = "status-badge blocked";
-                    badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> ERROR";
-                    titleEl.innerText = "Channel Join Required";
-                    subEl.innerText = data.message || "Please join all required channels first.";
-                    actionBtn.className = "action-btn btn-active";
-                    actionBtn.innerText = "Return To Bot";
-                    actionBtn.onclick = function() {
-                        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.close) {
-                            window.Telegram.WebApp.close();
-                        } else {
-                            window.location.href = "https://t.me/${BOT_USERNAME}";
-                        }
-                    };
-                } else {
-                    badgeEl.className = "status-badge blocked";
-                    badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> ERROR";
-                    titleEl.innerText = "Verification Failed";
-                    subEl.innerText = data.message || "An unexpected error occurred.";
-                    actionBtn.className = "action-btn btn-active";
-                    actionBtn.innerText = "Retry / Return";
-                    actionBtn.onclick = function() { window.location.reload(); };
-                }
-            } catch(e) {
-                badgeEl.className = "status-badge blocked";
-                badgeEl.innerHTML = "<span style='font-size:8px;'>●</span> RETRY";
-                titleEl.innerText = "Connection Error";
-                subEl.innerText = "Please check your network and try again.";
-                actionBtn.className = "action-btn btn-active";
-                actionBtn.innerText = "Retry Scan";
-                actionBtn.onclick = function() { window.location.reload(); };
-            }
-        }
-
-        window.addEventListener('load', startVerification);
-    </script>
-</body>
-</html>`;
-}
-
-/*
-|--------------------------------------------------------------------------
 | MAIN TELEGRAM UPDATE HANDLER
 |--------------------------------------------------------------------------
 */
@@ -1093,6 +576,7 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
+        // ভেরিফাই চেক হ্যান্ডলার (আইপি ছাড়া ডিরেক্ট ভেরিফাই)
         if (data === 'verify_join') {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -1100,33 +584,56 @@ async function handleUpdate(update) {
                 return;
             }
 
-            const user = await getUser(fromId);
+            let user = await getUser(fromId);
+            const now = Math.floor(Date.now() / 1000);
 
-            if (user && user.verification_status === 'multiple_account_blocked') {
-                await answerCallback(callback.id, "🚫 আপনার অ্যাকাউন্টটি মাল্টিপল ডিভাইস হিসেবে ব্লকড!", true);
-                if (chatId && messageId) await deleteMessage(chatId, messageId);
-                const blockMsg = 
-                    "🚫 <b>Multiple Account Detected</b>\n\n" +
-                    "Multiple accounts are not allowed on the same device.\n\n" +
-                    "If you believe this is a mistake, please contact support.";
-                await sendMessage(fromId, blockMsg, {
-                    inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
-                });
-                return;
+            if (!user) {
+                user = {
+                    telegram_id: fromId,
+                    first_name: callback.from.first_name || 'User',
+                    username: callback.from.username || '',
+                    balance: 0,
+                    verification_status: 'verified',
+                    is_verified: true,
+                    created_at: now
+                };
+                await setUser(fromId, user);
             }
 
-            // ইউজার আগে থেকেই ভেরিফাইড হলে সোজা মেনু দেখাবে
-            if (user && user.verification_status === 'verified') {
-                await answerCallback(callback.id, "✅ চ্যানেল ভেরিফিকেশন সফল হয়েছে!", false);
-                if (chatId && messageId) await deleteMessage(chatId, messageId);
-                await sendMessage(fromId, "✅ <b>You are verified!</b>\n\nWelcome back! 🎉", await getUserMenu(fromId));
-                return;
+            const welcomeBonus = Number(await getSetting('welcome_bonus', 0));
+            let newBalance = Number(user.balance || 0);
+            const userUpdates = {
+                verification_status: 'verified',
+                is_verified: true,
+                verified_at: now
+            };
+
+            if (!user.welcome_claimed && welcomeBonus > 0) {
+                newBalance += welcomeBonus;
+                userUpdates.balance = newBalance;
+                userUpdates.welcome_claimed = true;
             }
 
-            await answerCallback(callback.id, "✅ চ্যানেল ভেরিফিকেশন সফল! এবার ডিভাইস ভেরিফাই করুন।", false);
+            await updateUser(fromId, userUpdates);
+
+            // রেফারেল বোনাস দেওয়া
+            if (user.referred_by && !user.referral_rewarded) {
+                const ref = await getUser(user.referred_by);
+                if (ref) {
+                    const refBonus = Number(await getSetting('referral_bonus', 0));
+                    await updateUser(user.referred_by, {
+                        balance: Number(ref.balance || 0) + refBonus,
+                        total_referrals: Number(ref.total_referrals || 0) + 1
+                    });
+                    await updateUser(fromId, { referral_rewarded: true });
+                    await sendMessage(user.referred_by, `🎉 <b>New Referral Joined!</b>\n━━━━━━━━━━━━━━━━━━\n\n⭐ Bonus: <b>+${formatNumber(refBonus)} STAR</b>\n👥 Total Referrals: <b>${Number(ref.total_referrals || 0) + 1}</b>`);
+                }
+            }
+
+            await answerCallback(callback.id, "✅ চ্যানেল ভেরিফিকেশন সফল হয়েছে!", false);
             if (chatId && messageId) await deleteMessage(chatId, messageId);
 
-            await sendDeviceVerificationPrompt(chatId, fromId, callback.from.first_name);
+            await sendMessage(fromId, `✅ <b>ভেরিফিকেশন সফল হয়েছে!</b>\n\nWelcome to ${escapeHtml(BOT_USERNAME)}! 🎉`, await getUserMenu(fromId));
             return;
         }
 
@@ -1151,6 +658,7 @@ async function handleUpdate(update) {
             return;
         }
 
+        // উইথড্র এপ্রুভ / রিজেক্ট
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
             if (!(await isAdmin(fromId))) {
@@ -1178,7 +686,7 @@ async function handleUpdate(update) {
                 });
                 await answerCallback(callback.id, '✅ Approved!');
                 await sendMessage(withdraw.user_id, `🎉 <b>Withdrawal Approved!</b>\n\n💰 Amount: <b>${formatNumber(withdraw.after_fee)} STAR</b>\n🧾 ID: <code>${withdraw.transaction_id}</code>`);
-                
+
                 if (chatId && messageId) {
                     await sendReplyMessage(chatId, messageId, buildApprovedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
                 }
@@ -1201,7 +709,7 @@ async function handleUpdate(update) {
                 });
                 await answerCallback(callback.id, '❌ Rejected & Refunded!');
                 await sendMessage(withdraw.user_id, `❌ <b>Withdrawal Rejected</b>\n\n${formatNumber(withdraw.amount)} STAR balance-এ রিফান্ড করা হয়েছে।`);
-                
+
                 if (chatId && messageId) {
                     await sendReplyMessage(chatId, messageId, buildRejectedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
                 }
@@ -1209,8 +717,140 @@ async function handleUpdate(update) {
             }
         }
 
-        // STRICT ADMIN CALLBACKS
+        // ==========================================
+        // 📢 ব্রডকাস্ট কনফার্মেশন ও ডিলিট হ্যান্ডলার
+        // ==========================================
         if (await isAdmin(fromId)) {
+            // ইউজার ব্রডকাস্ট Send
+            if (data === 'confirm_broadcast_users') {
+                const aState = await getAdminState(fromId);
+                if (!aState || aState.action !== 'confirm_broadcast_users') {
+                    await answerCallback(callback.id, 'Session Expired!', true);
+                    return;
+                }
+                await answerCallback(callback.id, '🚀 ব্রডকাস্ট শুরু হচ্ছে...');
+                await clearAdminState(fromId);
+                if (chatId && messageId) await deleteMessage(chatId, messageId);
+
+                const users = await getAllUsers();
+                let success = 0, failed = 0;
+                const sentRecords = {};
+
+                for (const uid of Object.keys(users)) {
+                    try {
+                        const res = await copyMessage(uid, aState.from_chat_id, aState.message_id);
+                        if (res && res.ok && res.result?.message_id) {
+                            success++;
+                            sentRecords[uid] = res.result.message_id;
+                        } else {
+                            failed++;
+                        }
+                    } catch {
+                        failed++;
+                    }
+                }
+
+                // ভুল করে চলে গেলে যাতে ডিলিট করা যায় সেজন্য সংরক্ষণ
+                const bId = `bc_${Date.now()}`;
+                await firebaseRequest(`broadcast_history/${bId}`, 'PUT', {
+                    type: 'users',
+                    sent: sentRecords,
+                    created_at: Math.floor(Date.now() / 1000)
+                });
+
+                const deleteKeyboard = {
+                    inline_keyboard: [
+                        [{ text: '🗑️ Delete Broadcast', callback_data: `delete_bc_${bId}` }]
+                    ]
+                };
+
+                await sendMessage(chatId, `📢 <b>ইউজার ব্রডকাস্ট সম্পন্ন!</b>\n\n✅ সফল: <b>${success}</b>\n❌ ব্যর্থ: <b>${failed}</b>\n\n<i>ভুল করে গেলে নিচের বাটন চেপে ডিলিট করতে পারবেন।</i>`, deleteKeyboard);
+                return;
+            }
+
+            // চ্যানেল ব্রডকাস্ট Send
+            if (data === 'confirm_broadcast_channels') {
+                const aState = await getAdminState(fromId);
+                if (!aState || aState.action !== 'confirm_broadcast_channels') {
+                    await answerCallback(callback.id, 'Session Expired!', true);
+                    return;
+                }
+                await answerCallback(callback.id, '🚀 চ্যানেল ব্রডকাস্ট শুরু হচ্ছে...');
+                await clearAdminState(fromId);
+                if (chatId && messageId) await deleteMessage(chatId, messageId);
+
+                const channels = await getAllForceChannels();
+                let success = 0, failed = 0;
+                const sentRecords = {};
+
+                for (const ch of Object.values(channels)) {
+                    if (ch && ch.channel_id) {
+                        try {
+                            const res = await copyMessage(ch.channel_id, aState.from_chat_id, aState.message_id);
+                            if (res && res.ok && res.result?.message_id) {
+                                success++;
+                                sentRecords[ch.channel_id] = res.result.message_id;
+                            } else {
+                                failed++;
+                            }
+                        } catch {
+                            failed++;
+                        }
+                    }
+                }
+
+                const bId = `bc_ch_${Date.now()}`;
+                await firebaseRequest(`broadcast_history/${bId}`, 'PUT', {
+                    type: 'channels',
+                    sent: sentRecords,
+                    created_at: Math.floor(Date.now() / 1000)
+                });
+
+                const deleteKeyboard = {
+                    inline_keyboard: [
+                        [{ text: '🗑️ Delete Channel Broadcast', callback_data: `delete_bc_${bId}` }]
+                    ]
+                };
+
+                await sendMessage(chatId, `📢 <b>চ্যানেল ব্রডকাস্ট সম্পন্ন!</b>\n\n✅ সফল চ্যানেল: <b>${success}</b>\n❌ ব্যর্থ: <b>${failed}</b>\n\n<i>ভুল করে গেলে নিচের বাটন চেপে ডিলিট করতে পারবেন।</i>`, deleteKeyboard);
+                return;
+            }
+
+            // ব্রডকাস্ট বাতিল
+            if (data === 'cancel_broadcast') {
+                await clearAdminState(fromId);
+                if (chatId && messageId) await deleteMessage(chatId, messageId);
+                await answerCallback(callback.id, '❌ ব্রডকাস্ট বাতিল করা হয়েছে!');
+                await sendMessage(chatId, "❌ ব্রডকাস্ট বাতিল করা হয়েছে।", getAdminMenu(isSuperAdmin(fromId)));
+                return;
+            }
+
+            // ব্রডকাস্ট মেসেজ ডিলিট হ্যান্ডলার
+            const delMatch = data.match(/^delete_bc_(bc_[A-Za-z0-9_]+)$/);
+            if (delMatch) {
+                const bId = delMatch[1];
+                const bcData = await firebaseRequest(`broadcast_history/${bId}`);
+                if (!bcData || !bcData.sent) {
+                    await answerCallback(callback.id, '⚠️ ব্রডকাস্ট হিস্টোরি পাওয়া যায়নি বা ইতিমধ্যে ডিলিট করা হয়েছে!', true);
+                    return;
+                }
+                await answerCallback(callback.id, '🗑️ মেসেজগুলো ডিলিট করা হচ্ছে...');
+
+                let delCount = 0;
+                for (const [targetChat, targetMsgId] of Object.entries(bcData.sent)) {
+                    try {
+                        const delRes = await deleteMessage(targetChat, targetMsgId);
+                        if (delRes && delRes.ok) delCount++;
+                    } catch {}
+                }
+
+                await firebaseRequest(`broadcast_history/${bId}`, 'DELETE');
+                if (chatId && messageId) await deleteMessage(chatId, messageId);
+                await sendMessage(chatId, `🗑️ <b>সফলভাবে ${delCount}টি প্রেরিত ব্রডকাস্ট মেসেজ মুছে ফেলা হয়েছে!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                return;
+            }
+
+            // অন্যান্য এডমিন সেটিংস কলব্যাক
             if (data === 'admin_add' && isSuperAdmin(fromId)) {
                 await setAdminState(fromId, 'add_admin');
                 await answerCallback(callback.id, 'Admin ID পাঠান');
@@ -1312,41 +952,27 @@ async function handleUpdate(update) {
                 await sendMessage(fromId, `📊 <b>Withdrawal Fee:</b> <b>${formatNumber(cur)}%</b>\n\nPercentage পাঠান (0-100):`, getCancelKeyboard());
                 return;
             }
-            if (data === 'gift_create') {
-                await setAdminState(fromId, 'gift_code');
-                await answerCallback(callback.id, 'Send details');
-                await sendMessage(fromId, "🎁 <b>Gift Code তৈরি</b>\n\nFormat: <code>CODE | STAR_AMOUNT | MAX_USERS</code>\nExample: <code>STAR50 | 5 | 100</code>", getCancelKeyboard());
-                return;
-            }
-            if (data === 'gift_list') {
-                const codes = (await firebaseRequest('gift_codes')) || {};
-                let out = "🎁 <b>Gift Code তালিকা</b>\n━━━━━━━━━━━━━━━━━━";
-                if (!Object.keys(codes).length) out += "\n\nকোনো Gift Code নেই।";
-                else {
-                    for (const [code, gift] of Object.entries(codes)) {
-                        if (gift) out += `\n\n🎁 <code>${escapeHtml(code)}</code> | ⭐ <b>${formatNumber(Number(gift.amount || 0))} STAR</b> | 👥 <b>${gift.used_count || 0}/${gift.max_users || 0}</b>`;
-                    }
-                }
-                await answerCallback(callback.id, 'Loaded');
-                await sendLongMessage(fromId, out);
-                return;
-            }
         }
     }
 
-    if (update.message && update.message.text) {
+    // ==========================================
+    // MESSAGE HANDLERS (TEXT & ALL MEDIA TYPES)
+    // ==========================================
+    if (update.message) {
         const msg = update.message;
         const fromId = String(msg.from.id).trim();
         const chatId = String(msg.chat.id);
-        const text = normalizeText(msg.text);
+        const text = normalizeText(msg.text || '');
         const isAdm = await isAdmin(fromId);
 
         let user = await getUser(fromId);
         if (!user) {
             let refBy = null;
-            const startMatch = text.match(/^\/start\s+(\d+)$/i);
-            if (startMatch && startMatch[1] !== fromId && (await getUser(startMatch[1]))) {
-                refBy = startMatch[1];
+            if (text) {
+                const startMatch = text.match(/^\/start\s+(\d+)$/i);
+                if (startMatch && startMatch[1] !== fromId && (await getUser(startMatch[1]))) {
+                    refBy = startMatch[1];
+                }
             }
             user = {
                 telegram_id: fromId,
@@ -1361,49 +987,89 @@ async function handleUpdate(update) {
             await setUser(fromId, user);
         }
 
-        if (text.toLowerCase() === '/cancel') {
+        if (text && text.toLowerCase() === '/cancel') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
-            await updateUser(fromId, { withdraw_state: null });
             await sendMessage(chatId, "❌ অপারেশন বাতিল করা হয়েছে।", await getUserMenu(fromId));
             return;
         }
 
         // ==========================================
-        // 🔒 STRICT FORCE JOIN & CHANNEL LEAVE CHECK
+        // 🔒 STRICT FORCE JOIN CHECK (NO IP/DEVICE SCAN)
         // ==========================================
         if (!isAdm) {
-            // যদি ইউজার ব্লকে থাকে
-            if (user.verification_status === 'multiple_account_blocked') {
-                const blockMsg = 
-                    "🚫 <b>Multiple Account Detected</b>\n\n" +
-                    "Multiple accounts are not allowed on this device.\n\n" +
-                    "If you believe this is a mistake, please contact support.";
-                await sendMessage(chatId, blockMsg, {
-                    inline_keyboard: [[{ text: '👨‍💻 Contact Support', url: `https://t.me/${SUPPORT_USERNAME}` }]]
-                });
-                return;
-            }
-
-            // কোনো চ্যানেল থেকে লিভ নিলে সাথে সাথে মেনু লক হবে
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
                 await showForceJoin(chatId);
                 return;
             }
-
-            // চ্যানেল জয়েন করা থাকলে যদি ডিভাইস ভেরিফিকেশন বাকি থাকে
-            if (user.verification_status !== 'verified') {
-                await sendDeviceVerificationPrompt(chatId, fromId, msg.from.first_name);
-                return;
-            }
         }
 
-        // ADMIN STATE INPUTS
+        // ==========================================
+        // ADMIN STATES FOR ALL BROADCASTS & SETTINGS
+        // ==========================================
         if (isAdm) {
             const aState = await getAdminState(fromId);
-            if (aState && aState.action) {
+
+            // ১. ইউজার ব্রডকাস্ট ইনপুট (ফটো, টেক্সট, ভিডিও, ফাইল, ফরওয়ার্ড সব সাপোর্ট করবে)
+            if (aState && aState.action === 'awaiting_broadcast_message') {
+                await setAdminState(fromId, 'confirm_broadcast_users', {
+                    from_chat_id: chatId,
+                    message_id: msg.message_id
+                });
+
+                await copyMessage(chatId, chatId, msg.message_id);
+
+                const confirmKb = {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Done (Send to Users)', callback_data: 'confirm_broadcast_users' },
+                            { text: '❌ Cancel', callback_data: 'cancel_broadcast' }
+                        ]
+                    ]
+                };
+
+                await sendMessage(chatId, "👆 <b>উপরের মেসেজটি প্রিভিউ হিসেবে দেখুন।</b>\n\nআপনি কি এই মেসেজটি <b>সকল ইউজারের কাছে</b> পাঠাতে চান?", confirmKb);
+                return;
+            }
+
+            // ২. চ্যানেল ব্রডকাস্ট ইনপুট (ফটো, টেক্সট, ভিডিও, ফাইল, ফরওয়ার্ড সব সাপোর্ট করবে)
+            if (aState && aState.action === 'awaiting_channel_broadcast_message') {
+                await setAdminState(fromId, 'confirm_broadcast_channels', {
+                    from_chat_id: chatId,
+                    message_id: msg.message_id
+                });
+
+                await copyMessage(chatId, chatId, msg.message_id);
+
+                const confirmKb = {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Done (Send to Channels)', callback_data: 'confirm_broadcast_channels' },
+                            { text: '❌ Cancel', callback_data: 'cancel_broadcast' }
+                        ]
+                    ]
+                };
+
+                await sendMessage(chatId, "👆 <b>উপরের মেসেজটি প্রিভিউ হিসেবে দেখুন।</b>\n\nআপনি কি এই মেসেজটি <b>সকল চ্যানেলে</b> পাঠাতে চান?", confirmKb);
+                return;
+            }
+
+            // অন্যান্য টেক্সট স্টেট
+            if (aState && aState.action && text) {
                 const action = aState.action;
+
+                if (action === 'set_source_info') {
+                    const parts = text.split('|').map(s => s.trim());
+                    const sName = parts[0] || 'RJ Maker Pro';
+                    const sLink = parts[1] || '';
+
+                    await setSetting('source_name', sName);
+                    await setSetting('source_link', sLink);
+                    await clearAdminState(fromId);
+                    await sendMessage(chatId, `✅ <b>Source Updated Successfully!</b>\n\n🔧 Name: <b>${escapeHtml(sName)}</b>\n🔗 Link: <code>${escapeHtml(sLink || 'None')}</code>`, getAdminMenu(isSuperAdmin(fromId)));
+                    return;
+                }
 
                 if (action === 'minimum_withdraw') {
                     if (isNumericAmount(text) && Number(text) > 0) {
@@ -1485,7 +1151,7 @@ async function handleUpdate(update) {
                     let link = text.trim();
                     if (link.startsWith('@')) link = 'https://t.me/' + link.slice(1);
                     await setAdminState(fromId, 'add_force_channel_name', { channel_id: aState.channel_id, channel_link: link });
-                    await sendMessage(chatId, "🔘 <b>Button Name দিন:</b>", getCancelKeyboard());
+                    await sendMessage(chatId, "🔘 <b>Button Name দিন (যেমন: Subscribe):</b>", getCancelKeyboard());
                     return;
                 }
 
@@ -1580,44 +1246,15 @@ async function handleUpdate(update) {
                     }
                     return;
                 }
-
-                if (action === 'gift_code') {
-                    const parts = text.split('|').map(s => s.trim());
-                    if (parts.length === 3 && isNumericAmount(parts[1]) && /^\d+$/.test(parts[2])) {
-                        await firebaseRequest(`gift_codes/${parts[0].toUpperCase()}`, 'PUT', {
-                            amount: Number(parts[1]),
-                            max_users: Number(parts[2]),
-                            used_count: 0,
-                            created_by: fromId,
-                            created_at: Math.floor(Date.now() / 1000),
-                            active: true
-                        });
-                        await clearAdminState(fromId);
-                        await sendMessage(chatId, `🎉 <b>Gift Code Created:</b> <code>${escapeHtml(parts[0].toUpperCase())}</code>`, getAdminMenu(isSuperAdmin(fromId)));
-                        return;
-                    }
-                    await sendMessage(chatId, "❌ Format: <code>CODE | STAR_AMOUNT | MAX_USERS</code>", getCancelKeyboard());
-                    return;
-                }
-
-                if (action === 'broadcast' && text) {
-                    await clearAdminState(fromId);
-                    const users = await getAllUsers();
-                    let s = 0, f = 0;
-                    for (const uid of Object.keys(users)) {
-                        const r = await sendMessage(uid, text);
-                        if (r && r.ok) s++; else f++;
-                    }
-                    await sendMessage(chatId, `📢 <b>Broadcast:</b> Sent ${s}, Failed ${f}`, getAdminMenu(isSuperAdmin(fromId)));
-                    return;
-                }
             }
         }
 
+        // ==========================================
         // USER STATE: WITHDRAWAL PROCESSING
+        // ==========================================
         if (!isAdm) {
             const uState = await getUserState(fromId);
-            if (uState && uState.action === 'withdraw_username') {
+            if (uState && uState.action === 'withdraw_username' && text) {
                 const target = normalizeTelegramUsernameInput(text);
                 if (!isValidTelegramUsername(target)) {
                     await sendMessage(chatId, "❌ সঠিক Username দিন: <code>@username</code>", getCancelKeyboard());
@@ -1662,7 +1299,7 @@ async function handleUpdate(update) {
                     await clearUserState(fromId);
                     await sendMessage(reqChannel, buildPendingAlertText(withdrawData), withdrawActionKeyboard(created.name));
 
-                    const withdrawConfirmText = 
+                    const withdrawConfirmText =
                         `🔔 <b>Withdrawal Submitted!</b>\n━━━━━━━━━━━━━━━━━━\n\n` +
                         `💰 Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n` +
                         `📊 Fee: <b>${formatNumber(fee)}%</b>\n` +
@@ -1675,33 +1312,11 @@ async function handleUpdate(update) {
                 }
                 return;
             }
-
-            if (uState && uState.action === 'gift_redeem') {
-                const code = text.trim().toUpperCase();
-                const gift = await firebaseRequest(`gift_codes/${code}`);
-                if (!gift || !gift.active || Number(gift.used_count || 0) >= Number(gift.max_users || 0)) {
-                    await sendMessage(chatId, "❌ <b>Invalid or Expired Gift Code!</b>", await getUserMenu(fromId));
-                    await clearUserState(fromId);
-                    return;
-                }
-                const claim = await firebaseRequest(`gift_claims/${code}/${fromId}`);
-                if (claim) {
-                    await sendMessage(chatId, "⚠️ <b>Already Redeemed!</b>", await getUserMenu(fromId));
-                    await clearUserState(fromId);
-                    return;
-                }
-                const reward = Number(gift.amount || 0);
-                const u = await getUser(fromId);
-                await updateUser(fromId, { balance: Number(u?.balance || 0) + reward });
-                await firebaseRequest(`gift_claims/${code}/${fromId}`, 'PUT', { claimed_at: Math.floor(Date.now() / 1000), reward: reward });
-                await firebaseRequest(`gift_codes/${code}`, 'PATCH', { used_count: Number(gift.used_count || 0) + 1 });
-                await clearUserState(fromId);
-                await sendMessage(chatId, `🎉 <b>Gift Code Redeemed!</b>\n\n⭐ <b>+${formatNumber(reward)} STAR</b>`, await getUserMenu(fromId));
-                return;
-            }
         }
 
-        // COMMANDS & MENUS
+        // ==========================================
+        // COMMANDS & USER MENUS
+        // ==========================================
         if (text.startsWith('/start')) {
             const politeStartText = `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\nEarn Telegram Stars easily and withdraw directly.`;
             await sendMessage(chatId, politeStartText, await getUserMenu(fromId));
@@ -1721,7 +1336,6 @@ async function handleUpdate(update) {
         if (text === '🔙 ইউজার প্যানেলে ফিরে যান') {
             await clearAdminState(fromId);
             await clearUserState(fromId);
-            await updateUser(fromId, { withdraw_state: null });
             await sendMessage(chatId, "👤 <b>User Panel Activated</b>", await getUserMenu(fromId));
             return;
         }
@@ -1740,7 +1354,7 @@ async function handleUpdate(update) {
             const shareText = encodeURIComponent(`🌟 Join our Star Earning Bot and earn free Telegram Stars! 🚀\n\nLink: ${link}`);
             const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${shareText}`;
 
-            const refMessage = 
+            const refMessage =
                 `👋 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
                 `🎁 <b>Referral Center</b>\n\n` +
                 `👥 <b>Total Referrals :</b> <b>${refCount}</b>\n` +
@@ -1766,14 +1380,8 @@ async function handleUpdate(update) {
             }
 
             await setUserState(fromId, 'withdraw_username');
-            const withdrawPrompt = `💸 <b>WITHDRAW STARS</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Fixed Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n\n📢 চ্যানেলের Username বা Post Link দিন\nExample: <code>Example: @channelname / https://t.me/channel/123</code>`;
+            const withdrawPrompt = `💸 <b>WITHDRAW STARS</b>\n━━━━━━━━━━━━━━━━━━\n\n💰 Fixed Amount: <b>${formatNumber(fixedAmount)} STAR</b>\n\n📢 চ্যানেলের Username বা Post Link দিন\nExample: <code>@channelname / https://t.me/channel/123</code>`;
             await sendMessage(chatId, withdrawPrompt, getCancelKeyboard());
-            return;
-        }
-
-        if (text === '🎁 Gift Code' && !isAdm) {
-            await setUserState(fromId, 'gift_redeem');
-            await sendMessage(chatId, "🎁 <b>REDEEM GIFT CODE</b>\n\nGift Code পাঠান:", getCancelKeyboard());
             return;
         }
 
@@ -1791,6 +1399,41 @@ async function handleUpdate(update) {
             return;
         }
 
+        // 📊 SYSTEM STATUS HANDLER (ইংরেজি এবং রিয়েলটাইম Payouts Done)
+        if (text === '📊 System Status') {
+            const users = await getAllUsers();
+            const totalUsersCount = Object.keys(users).length;
+
+            const allWithdrawals = (await firebaseRequest('withdrawals')) || {};
+            let approvedPayouts = 0;
+
+            for (const item of Object.values(allWithdrawals)) {
+                if (item && item.status === 'approved') {
+                    approvedPayouts += Number(item.after_fee || item.amount || 0);
+                }
+            }
+
+            const sourceName = (await getSetting('source_name', 'RJ Maker Pro')) || 'RJ Maker Pro';
+            const sourceLink = (await getSetting('source_link', '')) || '';
+
+            let sourceDisplay = escapeHtml(sourceName);
+            if (sourceLink) {
+                sourceDisplay = `<a href="${escapeHtml(sourceLink)}">${escapeHtml(sourceName)}</a>`;
+            }
+
+            const statusMessage =
+                `📡 <b>SYSTEM STATUS</b>\n\n` +
+                `👥 <b>Users Count:</b> ${totalUsersCount} Users\n\n` +
+                `⭐ <b>Payouts Done:</b> ${formatNumber(approvedPayouts)} Star\n\n` +
+                `🔧 <b>Source:</b> ${sourceDisplay}`;
+
+            await sendMessage(chatId, statusMessage);
+            return;
+        }
+
+        // ==========================================
+        // ADMIN PANEL BUTTONS
+        // ==========================================
         if (isAdm) {
             if (text === '📊 পরিসংখ্যান') {
                 const users = await getAllUsers();
@@ -1798,10 +1441,12 @@ async function handleUpdate(update) {
                 await sendMessage(chatId, `📊 <b>বট পরিসংখ্যান</b>\n\n👥 মোট ইউজার: <b>${Object.keys(users).length}</b>\n💸 মোট Withdrawal: <b>${Object.keys(withdrawals).length}</b>`);
                 return;
             }
+
             if (text === '👥 User & Balance Management') {
                 await sendMessage(chatId, "👥 <b>User & Balance Management</b>", balanceKeyboard());
                 return;
             }
+
             if (text === '📢 Channel Settings') {
                 const forceChannels = await getAllForceChannels();
                 const requestChannel = await getWithdrawRequestChannel();
@@ -1812,44 +1457,66 @@ async function handleUpdate(update) {
                 await sendMessage(chatId, textOut, { inline_keyboard: kb });
                 return;
             }
+
             if (text === '🎁 বোনাস সেটিংস') {
                 const welcome = Number(await getSetting('welcome_bonus', 0));
                 const referral = Number(await getSetting('referral_bonus', 0));
                 await sendMessage(chatId, `🎁 <b>বোনাস সেটিংস</b>\n\n🎁 Welcome: <b>${formatNumber(welcome)} ⭐</b>\n👥 Referral: <b>${formatNumber(referral)} ⭐</b>`, bonusKeyboard());
                 return;
             }
-            if (text === '🎁 Gift Code') {
-                await sendMessage(chatId, "🎁 <b>Gift Code Management</b>", giftKeyboard());
-                return;
-            }
+
             if (text === '💸 Withdraw Settings') {
                 const min = Number(await getSetting('min_withdraw', 15));
                 const fee = Number(await getSetting('withdraw_fee_percent', 0));
                 await sendMessage(chatId, `💸 <b>Withdraw Settings</b>\n\n💰 Fixed: <b>${formatNumber(min)} STAR</b>\n📊 Fee: <b>${formatNumber(fee)}%</b>`, withdrawSettingsKeyboard());
                 return;
             }
+
+            if (text === '🔧 Source Settings') {
+                await setAdminState(fromId, 'set_source_info');
+                const curName = await getSetting('source_name', 'RJ Maker Pro');
+                const curLink = await getSetting('source_link', '');
+                const prompt = 
+                    `🔧 <b>Source Name & Link Settings</b>\n\n` +
+                    `বর্তমান Source: <b>${escapeHtml(curName)}</b>\n` +
+                    `বর্তমান Link: <code>${escapeHtml(curLink || 'None')}</code>\n\n` +
+                    `নতুন Source নাম এবং লিংক পাঠান নিচের ফরম্যাটে:\n` +
+                    `<code>NAME | LINK</code>\n\n` +
+                    `উদাহরণ:\n<code>RJ Maker Pro | https://t.me/rjmakerpro</code>`;
+                await sendMessage(chatId, prompt, getCancelKeyboard());
+                return;
+            }
+
+            // সম্পূর্ণ মিডিয়া ব্রডকাস্ট ইনিশিয়েট
+            if (text === '📢 ব্রডকাস্ট') {
+                await setAdminState(fromId, 'awaiting_broadcast_message');
+                const prompt =
+                    `📢 <b>ইউজার ব্রডকাস্ট মোড অন করা হয়েছে</b>\n\n` +
+                    `আপনি যা ব্রডকাস্ট করতে চান তা পাঠান:\n` +
+                    `• যেকোনো টেক্সট\n` +
+                    `• ছবি (Photo)\n` +
+                    `• ভিডিও (Video)\n` +
+                    `• ফাইল বা ডকুমেন্ট (Document/File)\n` +
+                    `• কোনো চ্যানেল বা গ্রুপ থেকে ফরওয়ার্ড করা মেসেজ\n\n` +
+                    `মেসেজ পাঠানোর পর আপনাকে প্রিভিউ সহ <b>Done</b> এবং <b>Cancel</b> অপশন দেওয়া হবে।`;
+                await sendMessage(chatId, prompt, getCancelKeyboard());
+                return;
+            }
+
+            // চ্যানেল ব্রডকাস্ট ইনিশিয়েট
+            if (text === '📢 চ্যানেল ব্রডকাস্ট') {
+                await setAdminState(fromId, 'awaiting_channel_broadcast_message');
+                const prompt =
+                    `📢 <b>চ্যানেল ব্রডকাস্ট মোড অন করা হয়েছে</b>\n\n` +
+                    `বট যেসকল ফোর্স চ্যানেলে এডমিন রয়েছে, সেগুলোতে পাঠানোর জন্য মেসেজ পাঠান:\n` +
+                    `• যেকোনো টেক্সট / ছবি / ভিডিও / ফাইল / ফরওয়ার্ড মেসেজ\n\n` +
+                    `মেসেজ পাঠানোর পর প্রিভিউ সহ <b>Done</b> এবং <b>Cancel</b> অপশন পাবেন।`;
+                await sendMessage(chatId, prompt, getCancelKeyboard());
+                return;
+            }
+
             if (text === '👮 এডমিন ম্যানেজমেন্ট' && isSuperAdmin(fromId)) {
                 await sendMessage(chatId, "👮 <b>এডমিন ম্যানেজমেন্ট</b>", adminManagementKeyboard());
-                return;
-            }
-            if (text === '📢 ব্রডকাস্ট') {
-                await setAdminState(fromId, 'broadcast');
-                await sendMessage(chatId, "📢 <b>ব্রডকাস্ট মেসেজ পাঠান:</b>", getCancelKeyboard());
-                return;
-            }
-            if (text === '🛡️ রিস্টার্ট অল ভেরিফিকেশন') {
-                const users = await getAllUsers();
-                let count = 0;
-                for (const [uid, u] of Object.entries(users)) {
-                    if (u && !isSuperAdmin(uid)) {
-                        await updateUser(uid, { verification_status: 'pending_device_verification' });
-                        try {
-                            await sendDeviceVerificationPrompt(uid, uid, u.first_name);
-                            count++;
-                        } catch {}
-                    }
-                }
-                await sendMessage(chatId, `🛡️ <b>${count} জন ইউজারের কাছে ডিভাইস ভেরিফিকেশন পাঠানো হয়েছে।</b>`);
                 return;
             }
         }
@@ -1872,50 +1539,17 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get('/api/index', async (req, res) => {
-    if (req.query.action === 'avatar') {
-        const { uid } = req.query;
-        if (!uid) return res.status(404).end();
-        try {
-            const photos = await telegramApi('getUserProfilePhotos', { user_id: uid, limit: 1 });
-            if (photos && photos.ok && photos.result.total_count > 0) {
-                const photoSizes = photos.result.photos[0];
-                const fileId = photoSizes[photoSizes.length - 1].file_id;
-                const fileRes = await telegramApi('getFile', { file_id: fileId });
-                if (fileRes && fileRes.ok && fileRes.result.file_path) {
-                    const imgRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${fileRes.result.file_path}`);
-                    if (imgRes.ok) {
-                        const buffer = await imgRes.arrayBuffer();
-                        res.setHeader('Content-Type', imgRes.headers.get('content-type') || 'image/jpeg');
-                        res.setHeader('Cache-Control', 'public, max-age=86400');
-                        return res.status(200).send(Buffer.from(buffer));
-                    }
-                }
-            }
-        } catch {}
-        return res.status(404).end();
-    }
-
-    if (req.query.action === 'verify_flow') {
-        const { uid, name, t, sig } = req.query;
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-        return res.status(200).send(renderMiniAppPage(uid, name, t, sig));
-    }
-
-    return res.status(200).send('Server is Running ⚡');
-});
-
 app.post('/api/index', async (req, res) => {
-    if (req.body && req.body.hardware_id) {
-        return await handleDeviceVerificationSubmit(req, res);
-    }
     try {
         await handleUpdate(req.body || {});
     } catch (err) {
         console.error(err);
     }
     return res.status(200).send('OK');
+});
+
+app.get('/api/index', (req, res) => {
+    res.status(200).send('Bot Webhook Endpoint Active ⚡');
 });
 
 app.get('/', (req, res) => {
