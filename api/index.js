@@ -2,10 +2,11 @@
 |--------------------------------------------------------------------------
 | AURA STAR PAY BOT (PRODUCTION READY ⚡)
 | - Super Admin: 8045367594
-| - Force Join with 2-Column Grid & Single Fallback
+| - Force Join with 2-Column Grid & Single Fallback (👀 Check)
+| - Manual Payouts Done Control from Admin Panel
 | - Complete Media/Forward Broadcast with Delete Support
 | - Channel Broadcast Support
-| - Real-time System Status with Customizable Source
+| - Real-time System Status with Customizable Source & Payouts
 | - 24/7 Express Server for Render.com
 |--------------------------------------------------------------------------
 */
@@ -46,11 +47,15 @@ function escapeHtml(text) {
 
 function formatNumber(number) {
     const num = Number(number);
-    if (!isFinite(num)) return '0';
-    if (Math.abs(num - Math.round(num)) < 0.0000001) {
+    if (!isFinite(num) || isNaN(num)) return '0';
+    
+    // ফ্লোটিং পয়েন্ট বা ৩.৯৯৯৯ জাতীয় তারতম্য দূর করে পূর্ণ সংখ্যা করা
+    if (Math.abs(num - Math.round(num)) < 0.005) {
         return Math.round(num).toString();
     }
-    return parseFloat(num.toFixed(4)).toString();
+    
+    // দশমিক থাকলে অপ্রয়োজনীয় শূন্য কেটে সর্বোচ্চ ২ ঘর রাখা
+    return (Math.round(num * 100) / 100).toString();
 }
 
 function normalizeText(text) {
@@ -336,7 +341,7 @@ async function getUserMenu(userId) {
 
 function getAdminMenu(superAdmin) {
     const keyboard = [
-        [{ text: '📊 পরিসংখ্যান' }, { text: '👥 User & Balance Management' }],
+        [{ text: '⭐ সেট Payouts Done' }, { text: '👥 User & Balance Management' }],
         [{ text: '💸 Withdraw Settings' }, { text: '📢 Channel Settings' }],
         [{ text: '🎁 বোনাস সেটিংস' }, { text: '🔧 Source Settings' }],
         [{ text: '📢 ব্রডকাস্ট' }, { text: '📢 চ্যানেল ব্রডকাস্ট' }]
@@ -484,7 +489,7 @@ async function showForceJoin(chatId) {
     const inlineKeyboard = [];
     const total = channelList.length;
 
-    // প্রতি লাইনে ২ টা করে সাজানো হবে
+    // ২ কলামে বাটন সাজানো হবে
     for (let i = 0; i < total; i += 2) {
         if (i + 1 < total) {
             inlineKeyboard.push([
@@ -492,7 +497,7 @@ async function showForceJoin(chatId) {
                 { text: `▶️ ${channelList[i + 1].channel_name || 'Subscribe'}`, url: channelList[i + 1].channel_link }
             ]);
         } else {
-            // বেজোড় থাকলে শেষ চ্যানেলটি ফুল লাইনে (ছবির মতো)
+            // বেজোড় হলে শেষ চ্যানেলটি সিঙ্গেল ফুল লাইনে
             inlineKeyboard.push([
                 { text: `📢 ${channelList[i].channel_name || 'Subscribe'}`, url: channelList[i].channel_link }
             ]);
@@ -576,7 +581,7 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // ভেরিফাই চেক হ্যান্ডলার (আইপি ছাড়া ডিরেক্ট ভেরিফাই)
+        // ভেরিফাই চেক হ্যান্ডলার (আইপি ছাড়া সরাসরি ভেরিফাই)
         if (data === 'verify_join') {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -616,7 +621,7 @@ async function handleUpdate(update) {
 
             await updateUser(fromId, userUpdates);
 
-            // রেফারেল বোনাস দেওয়া
+            // রেফারেল বোনাস
             if (user.referred_by && !user.referral_rewarded) {
                 const ref = await getUser(user.referred_by);
                 if (ref) {
@@ -750,7 +755,6 @@ async function handleUpdate(update) {
                     }
                 }
 
-                // ভুল করে চলে গেলে যাতে ডিলিট করা যায় সেজন্য সংরক্ষণ
                 const bId = `bc_${Date.now()}`;
                 await firebaseRequest(`broadcast_history/${bId}`, 'PUT', {
                     type: 'users',
@@ -825,7 +829,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // ব্রডকাস্ট মেসেজ ডিলিট হ্যান্ডলার
+            // ব্রডকাস্ট ডিলিট হ্যান্ডলার
             const delMatch = data.match(/^delete_bc_(bc_[A-Za-z0-9_]+)$/);
             if (delMatch) {
                 const bId = delMatch[1];
@@ -850,7 +854,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // অন্যান্য এডমিন সেটিংস কলব্যাক
+            // অন্যান্য এডমিন কলব্যাক
             if (data === 'admin_add' && isSuperAdmin(fromId)) {
                 await setAdminState(fromId, 'add_admin');
                 await answerCallback(callback.id, 'Admin ID পাঠান');
@@ -994,9 +998,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ==========================================
-        // 🔒 STRICT FORCE JOIN CHECK (NO IP/DEVICE SCAN)
-        // ==========================================
+        // ফোস জয়েন চেক
         if (!isAdm) {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -1011,7 +1013,7 @@ async function handleUpdate(update) {
         if (isAdm) {
             const aState = await getAdminState(fromId);
 
-            // ১. ইউজার ব্রডকাস্ট ইনপুট (ফটো, টেক্সট, ভিডিও, ফাইল, ফরওয়ার্ড সব সাপোর্ট করবে)
+            // ১. ইউজার ব্রডকাস্ট ইনপুট (যেকোনো মিডিয়া / ফরওয়ার্ড)
             if (aState && aState.action === 'awaiting_broadcast_message') {
                 await setAdminState(fromId, 'confirm_broadcast_users', {
                     from_chat_id: chatId,
@@ -1033,7 +1035,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // ২. চ্যানেল ব্রডকাস্ট ইনপুট (ফটো, টেক্সট, ভিডিও, ফাইল, ফরওয়ার্ড সব সাপোর্ট করবে)
+            // ২. চ্যানেল ব্রডকাস্ট ইনপুট (যেকোনো মিডিয়া / ফরওয়ার্ড)
             if (aState && aState.action === 'awaiting_channel_broadcast_message') {
                 await setAdminState(fromId, 'confirm_broadcast_channels', {
                     from_chat_id: chatId,
@@ -1055,9 +1057,22 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // অন্যান্য টেক্সট স্টেট
+            // টেক্সট স্টেট হ্যান্ডলার
             if (aState && aState.action && text) {
                 const action = aState.action;
+
+                // ম্যানুয়াল Payouts Done সেট করার স্টেট
+                if (action === 'set_payouts_done') {
+                    if (isNumericAmount(text) && Number(text) >= 0) {
+                        const formatted = formatNumber(Number(text));
+                        await setSetting('custom_payouts_done', formatted);
+                        await clearAdminState(fromId);
+                        await sendMessage(chatId, `✅ <b>Payouts Done সফলভাবে সেট করা হয়েছে:</b> <b>${formatted} Star</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    } else {
+                        await sendMessage(chatId, "❌ সঠিক সংখ্যা পাঠান (যেমন: 500 বা 1000):", getCancelKeyboard());
+                    }
+                    return;
+                }
 
                 if (action === 'set_source_info') {
                     const parts = text.split('|').map(s => s.trim());
@@ -1399,19 +1414,12 @@ async function handleUpdate(update) {
             return;
         }
 
-        // 📊 SYSTEM STATUS HANDLER (ইংরেজি এবং রিয়েলটাইম Payouts Done)
+        // 📊 SYSTEM STATUS HANDLER (এডমিনের সেট করা Payouts Done সরাসরি প্রদর্শন করবে)
         if (text === '📊 System Status') {
             const users = await getAllUsers();
             const totalUsersCount = Object.keys(users).length;
 
-            const allWithdrawals = (await firebaseRequest('withdrawals')) || {};
-            let approvedPayouts = 0;
-
-            for (const item of Object.values(allWithdrawals)) {
-                if (item && item.status === 'approved') {
-                    approvedPayouts += Number(item.after_fee || item.amount || 0);
-                }
-            }
+            const customPayouts = await getSetting('custom_payouts_done', '0');
 
             const sourceName = (await getSetting('source_name', 'RJ Maker Pro')) || 'RJ Maker Pro';
             const sourceLink = (await getSetting('source_link', '')) || '';
@@ -1424,7 +1432,7 @@ async function handleUpdate(update) {
             const statusMessage =
                 `📡 <b>SYSTEM STATUS</b>\n\n` +
                 `👥 <b>Users Count:</b> ${totalUsersCount} Users\n\n` +
-                `⭐ <b>Payouts Done:</b> ${formatNumber(approvedPayouts)} Star\n\n` +
+                `⭐ <b>Payouts Done:</b> ${escapeHtml(customPayouts)} Star\n\n` +
                 `🔧 <b>Source:</b> ${sourceDisplay}`;
 
             await sendMessage(chatId, statusMessage);
@@ -1435,10 +1443,15 @@ async function handleUpdate(update) {
         // ADMIN PANEL BUTTONS
         // ==========================================
         if (isAdm) {
-            if (text === '📊 পরিসংখ্যান') {
-                const users = await getAllUsers();
-                const withdrawals = (await firebaseRequest('withdrawals')) || {};
-                await sendMessage(chatId, `📊 <b>বট পরিসংখ্যান</b>\n\n👥 মোট ইউজার: <b>${Object.keys(users).length}</b>\n💸 মোট Withdrawal: <b>${Object.keys(withdrawals).length}</b>`);
+            // ১. এডমিন Payouts Done সেট করার বাটন
+            if (text === '⭐ সেট Payouts Done') {
+                await setAdminState(fromId, 'set_payouts_done');
+                const cur = await getSetting('custom_payouts_done', '0');
+                const prompt =
+                    `⭐ <b>Payouts Done সেটিংস</b>\n\n` +
+                    `বর্তমান Payouts Done: <b>${escapeHtml(cur)} Star</b>\n\n` +
+                    `নতুন কত স্টার দেখাতে চান তা লিখে পাঠান (যেমন: <code>500</code> বা <code>1000</code>):`;
+                await sendMessage(chatId, prompt, getCancelKeyboard());
                 return;
             }
 
@@ -1487,7 +1500,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // সম্পূর্ণ মিডিয়া ব্রডকাস্ট ইনিশিয়েট
+            // ইউজার ব্রডকাস্ট
             if (text === '📢 ব্রডকাস্ট') {
                 await setAdminState(fromId, 'awaiting_broadcast_message');
                 const prompt =
@@ -1503,7 +1516,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // চ্যানেল ব্রডকাস্ট ইনিশিয়েট
+            // চ্যানেল ব্রডকাস্ট
             if (text === '📢 চ্যানেল ব্রডকাস্ট') {
                 await setAdminState(fromId, 'awaiting_channel_broadcast_message');
                 const prompt =
