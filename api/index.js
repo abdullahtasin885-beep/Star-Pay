@@ -2,6 +2,7 @@
 |--------------------------------------------------------------------------
 | AURA STAR PAY BOT (ULTRA-FAST & PRODUCTION READY ⚡)
 | - Super Admin: 8045367594
+| - Supports Both Channel Username & Direct Post Links for Withdrawals
 | - Short Join Notice with Auto-Delete & Re-Prompt
 | - User Menu with "📮 Referral" Button
 | - No Popup Alert Modal (Direct In-Chat Messages Only)
@@ -55,7 +56,7 @@ const FIREBASE_AUTH_PASSWORD = '@mayabiri';
 
 /*
 |--------------------------------------------------------------------------
-| BASIC HELPERS
+| BASIC HELPERS & TARGET NORMALIZATION
 |--------------------------------------------------------------------------
 */
 function escapeHtml(text) {
@@ -88,6 +89,53 @@ function isNumericAmount(value) {
     if (typeof value !== 'string' && typeof value !== 'number') return false;
     const str = String(value).trim();
     return str !== '' && !isNaN(Number(str)) && isFinite(Number(str));
+}
+
+// চ্যানেল ইউজারনেম এবং পোস্ট লিংক দুটোই সঠিকভাবে প্রসেস করার ফাংশন
+function normalizeWithdrawTarget(input) {
+    input = normalizeText(input).trim();
+    if (!input) return '';
+
+    // ১. যদি ইউজার @channel/123 ফরম্যাটে দেয়
+    const atSlashMatch = input.match(/^@([A-Za-z0-9_]{4,32})\/(\d+)$/);
+    if (atSlashMatch) {
+        return `https://t.me/${atSlashMatch[1]}/${atSlashMatch[2]}`;
+    }
+
+    // ২. যদি পোস্ট লিংক হয় (যেমন: https://t.me/channel/123 বা t.me/channel/123)
+    const postLinkMatch = input.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/(?:[A-Za-z0-9_]{4,32}|c\/\d+)\/(\d+)\/?$/i);
+    if (postLinkMatch) {
+        if (!input.startsWith('http://') && !input.startsWith('https://')) {
+            input = 'https://' + input.replace(/^\/+/, '');
+        }
+        return input;
+    }
+
+    // ৩. যদি চ্যানেল লিংক হয় (যেমন: https://t.me/channelname)
+    const channelLinkMatch = input.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{4,32})\/?$/i);
+    if (channelLinkMatch) {
+        return '@' + channelLinkMatch[1];
+    }
+
+    // ৪. যদি সরাসরি ইউজারনেম দেয়
+    if (input.startsWith('@')) {
+        return input;
+    }
+
+    if (/^[A-Za-z0-9_]{4,32}$/.test(input)) {
+        return '@' + input;
+    }
+
+    return input;
+}
+
+function isValidWithdrawTarget(target) {
+    if (!target) return false;
+    // ইউজারনেম ভ্যালিডেশন
+    if (/^@[A-Za-z0-9_]{4,32}$/.test(target)) return true;
+    // পোস্ট লিংক ভ্যালিডেশন (পাবলিক বা প্রাইভেট উভয় চ্যানেল পোস্ট)
+    if (/^https?:\/\/t\.me\/(?:[A-Za-z0-9_]{4,32}|c\/\d+)\/\d+\/?$/i.test(target)) return true;
+    return false;
 }
 
 /*
@@ -291,7 +339,6 @@ async function deleteMessage(chatId, messageId) {
     return await telegramApi('deleteMessage', { chat_id: chatId, message_id: messageId });
 }
 
-// কোনো পপ-আপ অ্যালার্ট দেবে না
 async function answerCallback(callbackId) {
     return await telegramApi('answerCallbackQuery', {
         callback_query_id: callbackId,
@@ -469,17 +516,6 @@ function claimOnlyKeyboard() {
     };
 }
 
-function normalizeTelegramUsernameInput(input) {
-    input = normalizeText(input);
-    input = input.replace(/^https?:\/\/t\.me\//i, '@').replace(/^t\.me\//i, '@').trim();
-    if (input !== '' && !input.startsWith('@')) input = '@' + input;
-    return input;
-}
-
-function isValidTelegramUsername(username) {
-    return /^@[A-Za-z0-9_]{5,32}$/.test(username);
-}
-
 async function getTelegramChat(chatId) {
     const res = await telegramApi('getChat', { chat_id: chatId });
     return res && res.ok ? res.result : null;
@@ -631,22 +667,17 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // ভেরিফাই চেক হ্যান্ডলার (Claim বাটনে ক্লিক)
+        // ভেরিফাই চেক হ্যান্ডলার
         if (data === 'verify_join') {
             await answerCallback(callback.id);
             invalidateUserChannelCache(fromId);
             
             const joinedAll = await isUserJoinedAllChannels(fromId, true);
             if (!joinedAll) {
-                // ১. আগের চ্যানেল জয়েন মেসেজটি ডিলিট করা
                 if (chatId && messageId) {
                     try { await deleteMessage(chatId, messageId); } catch {}
                 }
-
-                // ২. একদম শর্ট নোটিশ মেসেজ পাঠানো
                 await sendMessage(fromId, "⚠️ <b>আগে সব চ্যানেলে জয়েন করুন!</b>");
-
-                // ৩. নোটিশের পরে নতুন করে চ্যানেলে জয়েন করার মেসেজ পাঠানো
                 await showForceJoin(fromId, callback.from.first_name);
                 return;
             }
@@ -1333,16 +1364,18 @@ async function handleUpdate(update) {
         }
 
         // ==========================================
-        // USER STATE: WITHDRAWAL PROCESSING
+        // USER STATE: WITHDRAWAL PROCESSING (USERNAME OR POST LINK)
         // ==========================================
         if (!isAdm) {
             const uState = await getUserState(fromId);
             if (uState && uState.action === 'withdraw_username' && text) {
-                const target = normalizeTelegramUsernameInput(text);
-                if (!isValidTelegramUsername(target)) {
-                    await sendMessage(chatId, "❌ সঠিক Username দিন: <code>@username</code>", getCancelKeyboard());
+                // চ্যানেল ইউজারনেম এবং পোস্ট লিংক দুটিই হ্যান্ডেল করবে
+                const target = normalizeWithdrawTarget(text);
+                if (!isValidWithdrawTarget(target)) {
+                    await sendMessage(chatId, "❌ সঠিক <b>Username</b> (যেমন: <code>@channelname</code>) অথবা <b>Post Link</b> (যেমন: <code>https://t.me/channel/123</code>) দিন:", getCancelKeyboard());
                     return;
                 }
+
                 const u = await getUser(fromId);
                 const fixedAmount = Number(await getSetting('min_withdraw', 15));
                 const currentBalance = Number(u?.balance || 0);
