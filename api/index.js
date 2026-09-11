@@ -2,6 +2,8 @@
 |--------------------------------------------------------------------------
 | AURA STAR PAY BOT (ULTRA-FAST & PRODUCTION READY ⚡)
 | - Super Admin: 8045367594
+| - In-Place Message Edit on Approve/Reject (No Extra Reply Message)
+| - Instant Balance Cut on Withdraw & Instant Refund on Reject
 | - Supports Both Channel Username & Direct Post Links for Withdrawals
 | - Short Join Notice with Auto-Delete & Re-Prompt
 | - User Menu with "📮 Referral" Button
@@ -91,18 +93,15 @@ function isNumericAmount(value) {
     return str !== '' && !isNaN(Number(str)) && isFinite(Number(str));
 }
 
-// চ্যানেল ইউজারনেম এবং পোস্ট লিংক দুটোই সঠিকভাবে প্রসেস করার ফাংশন
 function normalizeWithdrawTarget(input) {
     input = normalizeText(input).trim();
     if (!input) return '';
 
-    // ১. যদি ইউজার @channel/123 ফরম্যাটে দেয়
     const atSlashMatch = input.match(/^@([A-Za-z0-9_]{4,32})\/(\d+)$/);
     if (atSlashMatch) {
         return `https://t.me/${atSlashMatch[1]}/${atSlashMatch[2]}`;
     }
 
-    // ২. যদি পোস্ট লিংক হয় (যেমন: https://t.me/channel/123 বা t.me/channel/123)
     const postLinkMatch = input.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/(?:[A-Za-z0-9_]{4,32}|c\/\d+)\/(\d+)\/?$/i);
     if (postLinkMatch) {
         if (!input.startsWith('http://') && !input.startsWith('https://')) {
@@ -111,13 +110,11 @@ function normalizeWithdrawTarget(input) {
         return input;
     }
 
-    // ৩. যদি চ্যানেল লিংক হয় (যেমন: https://t.me/channelname)
     const channelLinkMatch = input.match(/^(?:https?:\/\/)?(?:www\.)?t\.me\/([A-Za-z0-9_]{4,32})\/?$/i);
     if (channelLinkMatch) {
         return '@' + channelLinkMatch[1];
     }
 
-    // ৪. যদি সরাসরি ইউজারনেম দেয়
     if (input.startsWith('@')) {
         return input;
     }
@@ -131,9 +128,7 @@ function normalizeWithdrawTarget(input) {
 
 function isValidWithdrawTarget(target) {
     if (!target) return false;
-    // ইউজারনেম ভ্যালিডেশন
     if (/^@[A-Za-z0-9_]{4,32}$/.test(target)) return true;
-    // পোস্ট লিংক ভ্যালিডেশন (পাবলিক বা প্রাইভেট উভয় চ্যানেল পোস্ট)
     if (/^https?:\/\/t\.me\/(?:[A-Za-z0-9_]{4,32}|c\/\d+)\/\d+\/?$/i.test(target)) return true;
     return false;
 }
@@ -313,16 +308,17 @@ async function sendMessage(chatId, text, replyMarkup = null) {
     return await telegramApi('sendMessage', params);
 }
 
-async function sendReplyMessage(chatId, replyToMessageId, text, replyMarkup = null) {
+// ইন-প্লেস মেসেজ এডিট করার ফাংশন (কোনো নতুন মেসেজ যাবে না)
+async function editMessageText(chatId, messageId, text, replyMarkup = null) {
     const params = {
         chat_id: chatId,
+        message_id: messageId,
         text: text,
         parse_mode: 'HTML',
-        disable_web_page_preview: true,
-        reply_parameters: { message_id: replyToMessageId, allow_sending_without_reply: true }
+        disable_web_page_preview: true
     };
     if (replyMarkup) params.reply_markup = replyMarkup;
-    return await telegramApi('sendMessage', params);
+    return await telegramApi('editMessageText', params);
 }
 
 async function copyMessage(chatId, fromChatId, messageId, replyMarkup = null) {
@@ -734,7 +730,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // উইথড্র এপ্রুভ / রিজেক্ট
+        // উইথড্র এপ্রুভ / রিজেক্ট (মেসেজ সরাসরি এডিট হবে এবং কোনো রিপ্লাই যাবে না)
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
             await answerCallback(callback.id);
@@ -763,13 +759,15 @@ async function handleUpdate(update) {
                 });
                 await sendMessage(withdraw.user_id, `🎉 <b>Withdrawal Approved!</b>\n\n💰 Amount: <b>${formatNumber(withdraw.after_fee)} STAR</b>\n🧾 ID: <code>${withdraw.transaction_id}</code>`);
 
+                // আগের পেন্ডিং মেসেজটি সরাসরি এডিট হবে
                 if (chatId && messageId) {
-                    await sendReplyMessage(chatId, messageId, buildApprovedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
+                    await editMessageText(chatId, messageId, buildApprovedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
                 }
                 return;
             }
 
             if (action === 'reject') {
+                // রিজেক্ট হলে অ্যাকাউন্টে সম্পূর্ণ ব্যালেন্স রিফান্ড হবে
                 const target = await getUser(withdraw.user_id);
                 if (target) {
                     await updateUser(withdraw.user_id, {
@@ -785,8 +783,9 @@ async function handleUpdate(update) {
                 });
                 await sendMessage(withdraw.user_id, `❌ <b>Withdrawal Rejected</b>\n\n${formatNumber(withdraw.amount)} STAR balance-এ রিফান্ড করা হয়েছে।`);
 
+                // আগের পেন্ডিং মেসেজটি সরাসরি এডিট হবে
                 if (chatId && messageId) {
-                    await sendReplyMessage(chatId, messageId, buildRejectedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
+                    await editMessageText(chatId, messageId, buildRejectedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
                 }
                 return;
             }
@@ -1364,12 +1363,11 @@ async function handleUpdate(update) {
         }
 
         // ==========================================
-        // USER STATE: WITHDRAWAL PROCESSING (USERNAME OR POST LINK)
+        // USER STATE: WITHDRAWAL PROCESSING
         // ==========================================
         if (!isAdm) {
             const uState = await getUserState(fromId);
             if (uState && uState.action === 'withdraw_username' && text) {
-                // চ্যানেল ইউজারনেম এবং পোস্ট লিংক দুটিই হ্যান্ডেল করবে
                 const target = normalizeWithdrawTarget(text);
                 if (!isValidWithdrawTarget(target)) {
                     await sendMessage(chatId, "❌ সঠিক <b>Username</b> (যেমন: <code>@channelname</code>) অথবা <b>Post Link</b> (যেমন: <code>https://t.me/channel/123</code>) দিন:", getCancelKeyboard());
@@ -1409,10 +1407,12 @@ async function handleUpdate(update) {
                     created_at: Math.floor(Date.now() / 1000)
                 };
 
+                // সাথে সাথে ইউজারের অ্যাকাউন্ট থেকে ব্যালেন্স কেটে নেওয়া
+                await updateUser(fromId, { balance: Math.max(0, currentBalance - fixedAmount) });
+                await clearUserState(fromId);
+
                 const created = await firebaseRequest('withdrawals', 'POST', withdrawData);
                 if (created && created.name) {
-                    await updateUser(fromId, { balance: Math.max(0, currentBalance - fixedAmount) });
-                    await clearUserState(fromId);
                     await sendMessage(reqChannel, buildPendingAlertText(withdrawData), withdrawActionKeyboard(created.name));
 
                     const withdrawConfirmText =
@@ -1425,6 +1425,10 @@ async function handleUpdate(update) {
                         `📌 Status: <b>PENDING ⏳</b>`;
 
                     await sendMessage(chatId, withdrawConfirmText, await getUserMenu(fromId));
+                } else {
+                    // কোনো ত্রুটি হলে ব্যালেন্স আগের অবস্থায় ফিরিয়ে আনা
+                    await updateUser(fromId, { balance: currentBalance });
+                    await sendMessage(chatId, "⚠️ উইথড্র রিকোয়েস্ট পাঠাতে ব্যর্থ হয়েছে, ব্যালেন্স ফেরত দেওয়া হয়েছে।", await getUserMenu(fromId));
                 }
                 return;
             }
