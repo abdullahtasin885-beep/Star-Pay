@@ -7,12 +7,9 @@
 | - Supports Both Channel Username & Direct Post Links for Withdrawals
 | - Short Join Notice with Auto-Delete & Re-Prompt
 | - User Menu with "📮 Referral" Button
-| - No Popup Alert Modal (Direct In-Chat Messages Only)
-| - Exact UI Matching Force Join with "Claim" Button
-| - Channel Broadcast Detailed Live Report with Failure Reasons
+| - Colored Buttons (primary, success, danger styles)
 | - Sub-300ms Parallel Channel Checking with Promise.all
 | - In-Memory 30s Membership & 60s Force Channel Caching
-| - Manual Payouts Done & Source Settings from Admin Panel
 | - Complete Media/Forward Broadcast with One-Click Delete
 | - 24/7 Express Server for Render.com
 |--------------------------------------------------------------------------
@@ -308,7 +305,6 @@ async function sendMessage(chatId, text, replyMarkup = null) {
     return await telegramApi('sendMessage', params);
 }
 
-// ইন-প্লেস মেসেজ এডিট করার ফাংশন (কোনো নতুন মেসেজ যাবে না)
 async function editMessageText(chatId, messageId, text, replyMarkup = null) {
     const params = {
         chat_id: chatId,
@@ -405,44 +401,44 @@ async function isAdmin(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| KEYBOARDS
+| KEYBOARDS WITH COLOR STYLES (primary, success, danger)
 |--------------------------------------------------------------------------
 */
 async function getUserMenu(userId) {
     const isAdm = await isAdmin(userId);
     const keyboard = [
-        [{ text: '👤 My Account' }, { text: '📮 Referral' }],
-        [{ text: '💸 Withdraw' }, { text: '📜 History' }],
+        [{ text: '👤 My Account', style: 'primary' }, { text: '📮 Referral', style: 'primary' }],
+        [{ text: '💸 Withdraw', style: 'success' }, { text: '📜 History' }],
         [{ text: '📊 System Status' }]
     ];
-    if (isAdm) keyboard.push([{ text: '🛠 Admin Panel' }]);
+    if (isAdm) keyboard.push([{ text: '🛠 Admin Panel', style: 'primary' }]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
 function getAdminMenu(superAdmin) {
     const keyboard = [
-        [{ text: '⭐ সেট Payouts Done' }, { text: '👥 User & Balance Management' }],
-        [{ text: '💸 Withdraw Settings' }, { text: '📢 Channel Settings' }],
-        [{ text: '🎁 বোনাস সেটিংস' }, { text: '🔧 Source Settings' }],
-        [{ text: '📢 ব্রডকাস্ট' }, { text: '📢 চ্যানেল ব্রডকাস্ট' }]
+        [{ text: '⭐ সেট Payouts Done', style: 'primary' }, { text: '👥 User & Balance Management', style: 'primary' }],
+        [{ text: '💸 Withdraw Settings', style: 'primary' }, { text: '📢 Channel Settings', style: 'primary' }],
+        [{ text: '🎁 বোনাস সেটিংস', style: 'primary' }, { text: '🔧 Source Settings', style: 'primary' }],
+        [{ text: '📢 ব্রডকাস্ট', style: 'primary' }, { text: '📢 চ্যানেল ব্রডকাস্ট', style: 'primary' }]
     ];
-    if (superAdmin) keyboard.push([{ text: '👮 এডমিন ম্যানেজমেন্ট' }]);
-    keyboard.push([{ text: '🔙 ইউজার প্যানেলে ফিরে যান' }]);
+    if (superAdmin) keyboard.push([{ text: '👮 এডমিন ম্যানেজমেন্ট', style: 'primary' }]);
+    keyboard.push([{ text: '🔙 ইউজার প্যানেলে ফিরে যান', style: 'danger' }]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
 function getCancelKeyboard() {
-    return { keyboard: [[{ text: '/cancel' }]], resize_keyboard: true, one_time_keyboard: true };
+    return { keyboard: [[{ text: '/cancel', style: 'danger' }]], resize_keyboard: true, one_time_keyboard: true };
 }
 
 function adminManagementKeyboard() {
     return {
         inline_keyboard: [
             [
-                { text: '➕ এডমিন যোগ করুন', callback_data: 'admin_add' },
-                { text: '➖ এডমিন রিমুভ করুন', callback_data: 'admin_remove' }
+                { text: '➕ এডমিন যোগ করুন', callback_data: 'admin_add', style: 'success' },
+                { text: '➖ এডমিন রিমুভ করুন', callback_data: 'admin_remove', style: 'danger' }
             ],
-            [{ text: '👮 এডমিন তালিকা', callback_data: 'admin_list' }]
+            [{ text: '👮 এডমিন তালিকা', callback_data: 'admin_list', style: 'primary' }]
         ]
     };
 }
@@ -451,10 +447,10 @@ function forceJoinKeyboard() {
     return {
         inline_keyboard: [
             [
-                { text: '➕ চ্যানেল যোগ করুন', callback_data: 'force_add' },
-                { text: '➖ চ্যানেল রিমুভ করুন', callback_data: 'force_remove' }
+                { text: '➕ চ্যানেল যোগ করুন', callback_data: 'force_add', style: 'success' },
+                { text: '➖ চ্যানেল রিমুভ করুন', callback_data: 'force_remove', style: 'danger' }
             ],
-            [{ text: '📋 চ্যানেল তালিকা', callback_data: 'force_list' }]
+            [{ text: '📋 চ্যানেল তালিকা', callback_data: 'force_list', style: 'primary' }]
         ]
     };
 }
@@ -463,8 +459,8 @@ function balanceKeyboard() {
     return {
         inline_keyboard: [
             [
-                { text: '➕ ব্যালেন্স যোগ করুন', callback_data: 'balance_add' },
-                { text: '➖ ব্যালেন্স কাটুন', callback_data: 'balance_cut' }
+                { text: '➕ ব্যালেন্স যোগ করুন', callback_data: 'balance_add', style: 'success' },
+                { text: '➖ ব্যালেন্স কাটুন', callback_data: 'balance_cut', style: 'danger' }
             ]
         ]
     };
@@ -473,8 +469,8 @@ function balanceKeyboard() {
 function bonusKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '🎁 ওয়েলকাম বোনাস', callback_data: 'bonus_welcome' }],
-            [{ text: '👥 রেফারেল বোনাস', callback_data: 'bonus_referral' }]
+            [{ text: '🎁 ওয়েলকাম বোনাস', callback_data: 'bonus_welcome', style: 'primary' }],
+            [{ text: '👥 রেফারেল বোনাস', callback_data: 'bonus_referral', style: 'primary' }]
         ]
     };
 }
@@ -482,8 +478,8 @@ function bonusKeyboard() {
 function withdrawSettingsKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '💰 ফিক্সড উইথড্র অ্যামাউন্ট সেট করুন', callback_data: 'withdraw_minimum' }],
-            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee' }]
+            [{ text: '💰 ফিক্সড উইথড্র অ্যামাউন্ট সেট করুন', callback_data: 'withdraw_minimum', style: 'primary' }],
+            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee', style: 'primary' }]
         ]
     };
 }
@@ -493,11 +489,11 @@ function withdrawActionKeyboard(withdrawId) {
     return {
         inline_keyboard: [
             [
-                { text: '✅ Approve', callback_data: `withdraw_approve_${withdrawId}` },
-                { text: '❌ Reject', callback_data: `withdraw_reject_${withdrawId}` }
+                { text: '✅ Approve', callback_data: `withdraw_approve_${withdrawId}`, style: 'success' },
+                { text: '❌ Reject', callback_data: `withdraw_reject_${withdrawId}`, style: 'danger' }
             ],
             [
-                { text: '🎁 Claim 2 Star', url: claimUrl }
+                { text: '🎁 Claim 2 Star', url: claimUrl, style: 'primary' }
             ]
         ]
     };
@@ -507,7 +503,7 @@ function claimOnlyKeyboard() {
     const claimUrl = `https://t.me/${BOT_USERNAME}?start=claim`;
     return {
         inline_keyboard: [
-            [{ text: '🎁 Claim 2 Star', url: claimUrl }]
+            [{ text: '🎁 Claim 2 Star', url: claimUrl, style: 'primary' }]
         ]
     };
 }
@@ -566,7 +562,7 @@ async function isUserJoinedAllChannels(userId, bypassCache = false) {
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN DISPLAY (EXACT SCREENSHOT MATCH: 2 JOIN BUTTONS + CLAIM)
+| FORCE JOIN DISPLAY
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId, firstName = 'User') {
@@ -579,18 +575,18 @@ async function showForceJoin(chatId, firstName = 'User') {
     for (let i = 0; i < total; i += 2) {
         if (i + 1 < total) {
             inlineKeyboard.push([
-                { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link },
-                { text: channelList[i + 1].channel_name || 'Join', url: channelList[i + 1].channel_link }
+                { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link, style: 'primary' },
+                { text: channelList[i + 1].channel_name || 'Join', url: channelList[i + 1].channel_link, style: 'primary' }
             ]);
         } else {
             inlineKeyboard.push([
-                { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link }
+                { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link, style: 'primary' }
             ]);
         }
     }
 
     inlineKeyboard.push([
-        { text: 'Claim', callback_data: 'verify_join' }
+        { text: 'Claim', callback_data: 'verify_join', style: 'success' }
     ]);
 
     const text =
@@ -730,7 +726,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // উইথড্র এপ্রুভ / রিজেক্ট (মেসেজ সরাসরি এডিট হবে এবং কোনো রিপ্লাই যাবে না)
+        // উইথড্র এপ্রুভ / রিজেক্ট
         const match = data.match(/^withdraw_(approve|reject)_([A-Za-z0-9_-]+)$/);
         if (match) {
             await answerCallback(callback.id);
@@ -759,7 +755,6 @@ async function handleUpdate(update) {
                 });
                 await sendMessage(withdraw.user_id, `🎉 <b>Withdrawal Approved!</b>\n\n💰 Amount: <b>${formatNumber(withdraw.after_fee)} STAR</b>\n🧾 ID: <code>${withdraw.transaction_id}</code>`);
 
-                // আগের পেন্ডিং মেসেজটি সরাসরি এডিট হবে
                 if (chatId && messageId) {
                     await editMessageText(chatId, messageId, buildApprovedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
                 }
@@ -767,7 +762,6 @@ async function handleUpdate(update) {
             }
 
             if (action === 'reject') {
-                // রিজেক্ট হলে অ্যাকাউন্টে সম্পূর্ণ ব্যালেন্স রিফান্ড হবে
                 const target = await getUser(withdraw.user_id);
                 if (target) {
                     await updateUser(withdraw.user_id, {
@@ -783,7 +777,6 @@ async function handleUpdate(update) {
                 });
                 await sendMessage(withdraw.user_id, `❌ <b>Withdrawal Rejected</b>\n\n${formatNumber(withdraw.amount)} STAR balance-এ রিফান্ড করা হয়েছে।`);
 
-                // আগের পেন্ডিং মেসেজটি সরাসরি এডিট হবে
                 if (chatId && messageId) {
                     await editMessageText(chatId, messageId, buildRejectedAlertText(withdraw, adminUsername), claimOnlyKeyboard());
                 }
@@ -791,9 +784,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // ==========================================
-        // 📢 ব্রডকাস্ট কনফার্মেশন ও লাইভ রিপোর্ট
-        // ==========================================
+        // ব্রডকাস্ট কনফার্মেশন ও লাইভ রিপোর্ট
         if (await isAdmin(fromId)) {
             // ১. ইউজার ব্রডকাস্ট Send
             if (data === 'confirm_broadcast_users') {
@@ -835,7 +826,7 @@ async function handleUpdate(update) {
 
                 const deleteKeyboard = {
                     inline_keyboard: [
-                        [{ text: '🗑️ Delete Broadcast', callback_data: `delete_bc_${bId}` }]
+                        [{ text: '🗑️ Delete Broadcast', callback_data: `delete_bc_${bId}`, style: 'danger' }]
                     ]
                 };
 
@@ -904,7 +895,7 @@ async function handleUpdate(update) {
 
                 const deleteKeyboard = {
                     inline_keyboard: [
-                        [{ text: '🗑️ Delete Channel Broadcast', callback_data: `delete_bc_${bId}` }]
+                        [{ text: '🗑️ Delete Channel Broadcast', callback_data: `delete_bc_${bId}`, style: 'danger' }]
                     ]
                 };
 
@@ -986,7 +977,7 @@ async function handleUpdate(update) {
                 }
                 const kb = [];
                 for (const [k, c] of Object.entries(channels)) {
-                    if (c) kb.push([{ text: `❌ ${c.channel_name || 'Unknown'}`, callback_data: `removeforce_${k}` }]);
+                    if (c) kb.push([{ text: `❌ ${c.channel_name || 'Unknown'}`, callback_data: `removeforce_${k}`, style: 'danger' }]);
                 }
                 await sendMessage(fromId, "📢 <b>ফোর্স চ্যানেল রিমুভ</b>\n\nতালিকা থেকে Channel নির্বাচন করুন:", { inline_keyboard: kb });
                 return;
@@ -1104,9 +1095,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // ==========================================
         // ADMIN STATES FOR ALL BROADCASTS & SETTINGS
-        // ==========================================
         if (isAdm) {
             const aState = await getAdminState(fromId);
 
@@ -1122,8 +1111,8 @@ async function handleUpdate(update) {
                 const confirmKb = {
                     inline_keyboard: [
                         [
-                            { text: '✅ Done (Send to Users)', callback_data: 'confirm_broadcast_users' },
-                            { text: '❌ Cancel', callback_data: 'cancel_broadcast' }
+                            { text: '✅ Done (Send to Users)', callback_data: 'confirm_broadcast_users', style: 'success' },
+                            { text: '❌ Cancel', callback_data: 'cancel_broadcast', style: 'danger' }
                         ]
                     ]
                 };
@@ -1144,8 +1133,8 @@ async function handleUpdate(update) {
                 const confirmKb = {
                     inline_keyboard: [
                         [
-                            { text: '✅ Done (Send to Channels)', callback_data: 'confirm_broadcast_channels' },
-                            { text: '❌ Cancel', callback_data: 'cancel_broadcast' }
+                            { text: '✅ Done (Send to Channels)', callback_data: 'confirm_broadcast_channels', style: 'success' },
+                            { text: '❌ Cancel', callback_data: 'cancel_broadcast', style: 'danger' }
                         ]
                     ]
                 };
@@ -1362,9 +1351,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // ==========================================
         // USER STATE: WITHDRAWAL PROCESSING
-        // ==========================================
         if (!isAdm) {
             const uState = await getUserState(fromId);
             if (uState && uState.action === 'withdraw_username' && text) {
@@ -1407,7 +1394,6 @@ async function handleUpdate(update) {
                     created_at: Math.floor(Date.now() / 1000)
                 };
 
-                // সাথে সাথে ইউজারের অ্যাকাউন্ট থেকে ব্যালেন্স কেটে নেওয়া
                 await updateUser(fromId, { balance: Math.max(0, currentBalance - fixedAmount) });
                 await clearUserState(fromId);
 
@@ -1426,7 +1412,6 @@ async function handleUpdate(update) {
 
                     await sendMessage(chatId, withdrawConfirmText, await getUserMenu(fromId));
                 } else {
-                    // কোনো ত্রুটি হলে ব্যালেন্স আগের অবস্থায় ফিরিয়ে আনা
                     await updateUser(fromId, { balance: currentBalance });
                     await sendMessage(chatId, "⚠️ উইথড্র রিকোয়েস্ট পাঠাতে ব্যর্থ হয়েছে, ব্যালেন্স ফেরত দেওয়া হয়েছে।", await getUserMenu(fromId));
                 }
@@ -1434,9 +1419,7 @@ async function handleUpdate(update) {
             }
         }
 
-        // ==========================================
         // COMMANDS & USER MENUS
-        // ==========================================
         if (text.startsWith('/start')) {
             const politeStartText = `🌟 <b>Welcome, ${escapeHtml(msg.from.first_name || 'User')}!</b>\n\nEarn Telegram Stars easily and withdraw directly.`;
             await sendMessage(chatId, politeStartText, await getUserMenu(fromId));
@@ -1466,7 +1449,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // 📮 Referral বাটন হ্যান্ডলার
+        // Referral বাটন হ্যান্ডলার
         if (text === '📮 Referral' || text === '👥 Refer & Earn') {
             const u = await getUser(fromId);
             const refCount = Number(u?.total_referrals || 0);
@@ -1484,7 +1467,7 @@ async function handleUpdate(update) {
 
             await sendMessage(chatId, refMessage, {
                 inline_keyboard: [
-                    [{ text: '🚀 Share', url: shareUrl }]
+                    [{ text: '🚀 Share', url: shareUrl, style: 'primary' }]
                 ]
             });
             return;
@@ -1520,7 +1503,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // 📊 SYSTEM STATUS HANDLER
+        // SYSTEM STATUS HANDLER
         if (text === '📊 System Status') {
             const users = await getAllUsers();
             const totalUsersCount = Object.keys(users).length;
@@ -1545,9 +1528,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // ==========================================
         // ADMIN PANEL BUTTONS
-        // ==========================================
         if (isAdm) {
             if (text === '⭐ সেট Payouts Done') {
                 await setAdminState(fromId, 'set_payouts_done');
