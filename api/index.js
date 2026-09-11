@@ -1,13 +1,12 @@
 /*
 |--------------------------------------------------------------------------
-| AURA STAR PAY BOT (ULTRA-FAST & PRODUCTION READY ⚡)
+| AURA STAR PAY BOT (MULTI-COLORED VIBRANT UI ⚡)
 | - Super Admin: 8045367594
+| - Every Button Styled (No White / Default Buttons)
+| - Mixed & Alternating Colors (Primary Blue, Success Green, Danger Red)
 | - In-Place Message Edit on Approve/Reject (No Extra Reply Message)
 | - Instant Balance Cut on Withdraw & Instant Refund on Reject
 | - Supports Both Channel Username & Direct Post Links for Withdrawals
-| - Short Join Notice with Auto-Delete & Re-Prompt
-| - User Menu with "📮 Referral" Button
-| - Colored Buttons (primary, success, danger styles)
 | - Sub-300ms Parallel Channel Checking with Promise.all
 | - In-Memory 30s Membership & 60s Force Channel Caching
 | - Complete Media/Forward Broadcast with One-Click Delete
@@ -401,29 +400,59 @@ async function isAdmin(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| KEYBOARDS WITH COLOR STYLES (primary, success, danger)
+| KEYBOARDS WITH FULL VIBRANT COLOR PALETTE (NO DEFAULT WHITE)
 |--------------------------------------------------------------------------
 */
 async function getUserMenu(userId) {
     const isAdm = await isAdmin(userId);
     const keyboard = [
-        [{ text: '👤 My Account', style: 'primary' }, { text: '📮 Referral', style: 'primary' }],
-        [{ text: '💸 Withdraw', style: 'success' }, { text: '📜 History' }],
-        [{ text: '📊 System Status' }]
+        [
+            { text: '👤 My Account', style: 'primary' },     // Blue
+            { text: '📮 Referral', style: 'success' }         // Green
+        ],
+        [
+            { text: '💸 Withdraw', style: 'danger' },         // Red
+            { text: '📜 History', style: 'primary' }          // Blue
+        ],
+        [
+            { text: '📊 System Status', style: 'success' }    // Green
+        ]
     ];
-    if (isAdm) keyboard.push([{ text: '🛠 Admin Panel', style: 'primary' }]);
+    if (isAdm) {
+        keyboard.push([
+            { text: '🛠 Admin Panel', style: 'danger' }       // Red
+        ]);
+    }
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
 function getAdminMenu(superAdmin) {
     const keyboard = [
-        [{ text: '⭐ সেট Payouts Done', style: 'primary' }, { text: '👥 User & Balance Management', style: 'primary' }],
-        [{ text: '💸 Withdraw Settings', style: 'primary' }, { text: '📢 Channel Settings', style: 'primary' }],
-        [{ text: '🎁 বোনাস সেটিংস', style: 'primary' }, { text: '🔧 Source Settings', style: 'primary' }],
-        [{ text: '📢 ব্রডকাস্ট', style: 'primary' }, { text: '📢 চ্যানেল ব্রডকাস্ট', style: 'primary' }]
+        [
+            { text: '⭐ সেট Payouts Done', style: 'success' },           // Green
+            { text: '👥 User & Balance Management', style: 'primary' }   // Blue
+        ],
+        [
+            { text: '💸 Withdraw Settings', style: 'danger' },           // Red
+            { text: '📢 Channel Settings', style: 'success' }            // Green
+        ],
+        [
+            { text: '🎁 বোনাস সেটিংস', style: 'primary' },               // Blue
+            { text: '🔧 Source Settings', style: 'danger' }              // Red
+        ],
+        [
+            { text: '📢 ব্রডকাস্ট', style: 'success' },                  // Green
+            { text: '📢 চ্যানেল ব্রডকাস্ট', style: 'primary' }           // Blue
+        ]
     ];
-    if (superAdmin) keyboard.push([{ text: '👮 এডমিন ম্যানেজমেন্ট', style: 'primary' }]);
-    keyboard.push([{ text: '🔙 ইউজার প্যানেলে ফিরে যান', style: 'danger' }]);
+    if (superAdmin) {
+        keyboard.push([
+            { text: '👮 এডমিন ম্যানেজমেন্ট', style: 'primary' }           // Blue
+        ]);
+    }
+    keyboard.push([
+        { text: '🔙 ইউজার প্যানেলে ফিরে যান', style: 'danger' }        // Red
+    ]);
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
@@ -438,7 +467,9 @@ function adminManagementKeyboard() {
                 { text: '➕ এডমিন যোগ করুন', callback_data: 'admin_add', style: 'success' },
                 { text: '➖ এডমিন রিমুভ করুন', callback_data: 'admin_remove', style: 'danger' }
             ],
-            [{ text: '👮 এডমিন তালিকা', callback_data: 'admin_list', style: 'primary' }]
+            [
+                { text: '👮 এডমিন তালিকা', callback_data: 'admin_list', style: 'primary' }
+            ]
         ]
     };
 }
@@ -450,7 +481,9 @@ function forceJoinKeyboard() {
                 { text: '➕ চ্যানেল যোগ করুন', callback_data: 'force_add', style: 'success' },
                 { text: '➖ চ্যানেল রিমুভ করুন', callback_data: 'force_remove', style: 'danger' }
             ],
-            [{ text: '📋 চ্যানেল তালিকা', callback_data: 'force_list', style: 'primary' }]
+            [
+                { text: '📋 চ্যানেল তালিকা', callback_data: 'force_list', style: 'primary' }
+            ]
         ]
     };
 }
@@ -469,7 +502,7 @@ function balanceKeyboard() {
 function bonusKeyboard() {
     return {
         inline_keyboard: [
-            [{ text: '🎁 ওয়েলকাম বোনাস', callback_data: 'bonus_welcome', style: 'primary' }],
+            [{ text: '🎁 ওয়েলকাম বোনাস', callback_data: 'bonus_welcome', style: 'success' }],
             [{ text: '👥 রেফারেল বোনাস', callback_data: 'bonus_referral', style: 'primary' }]
         ]
     };
@@ -479,7 +512,7 @@ function withdrawSettingsKeyboard() {
     return {
         inline_keyboard: [
             [{ text: '💰 ফিক্সড উইথড্র অ্যামাউন্ট সেট করুন', callback_data: 'withdraw_minimum', style: 'primary' }],
-            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee', style: 'primary' }]
+            [{ text: '📊 উইথড্র ফি (%)', callback_data: 'withdraw_fee', style: 'success' }]
         ]
     };
 }
@@ -503,7 +536,7 @@ function claimOnlyKeyboard() {
     const claimUrl = `https://t.me/${BOT_USERNAME}?start=claim`;
     return {
         inline_keyboard: [
-            [{ text: '🎁 Claim 2 Star', url: claimUrl, style: 'primary' }]
+            [{ text: '🎁 Claim 2 Star', url: claimUrl, style: 'success' }]
         ]
     };
 }
@@ -562,7 +595,7 @@ async function isUserJoinedAllChannels(userId, bypassCache = false) {
 
 /*
 |--------------------------------------------------------------------------
-| FORCE JOIN DISPLAY
+| FORCE JOIN DISPLAY (ALTERNATING COLORS)
 |--------------------------------------------------------------------------
 */
 async function showForceJoin(chatId, firstName = 'User') {
@@ -576,7 +609,7 @@ async function showForceJoin(chatId, firstName = 'User') {
         if (i + 1 < total) {
             inlineKeyboard.push([
                 { text: channelList[i].channel_name || 'Join', url: channelList[i].channel_link, style: 'primary' },
-                { text: channelList[i + 1].channel_name || 'Join', url: channelList[i + 1].channel_link, style: 'primary' }
+                { text: channelList[i + 1].channel_name || 'Join', url: channelList[i + 1].channel_link, style: 'danger' }
             ]);
         } else {
             inlineKeyboard.push([
@@ -1467,7 +1500,7 @@ async function handleUpdate(update) {
 
             await sendMessage(chatId, refMessage, {
                 inline_keyboard: [
-                    [{ text: '🚀 Share', url: shareUrl, style: 'primary' }]
+                    [{ text: '🚀 Share', url: shareUrl, style: 'success' }]
                 ]
             });
             return;
