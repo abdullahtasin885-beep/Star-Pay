@@ -1,37 +1,46 @@
 /*
 |--------------------------------------------------------------------------
 | AURA STAR PAY BOT (MULTI-COLORED VIBRANT UI ⚡) - HIGH PERFORMANCE
+| - Bot Username: @AuraStarPay1Bot
 | - Super Admin: 8045367594
-| - In-Memory Fast Caching (Sub-second response)
-| - Working Security (Blacklist & Whitelist)
-| - Dynamic Central Configurations & Support Bot Link
-| - Channel-specific Broadcast with Admin Check (✅ Bot Admin / ⚠️ Bot Not Admin)
-| - First Withdraw Referral Verification Rule
-| - English Clean User Panel & Bangla Detailed Admin Guides
-| - Express Server for 24/7 Deployment
+| - Maintenance Mode (Bot ON/OFF Switch with Instant Notice & Buttons)
+| - Mobile-like Blacklist & Whitelist-Only Security Protection
+| - Channel-specific Broadcast with Parallel Admin Check (✅/⚠️)
+| - First Withdraw Referral Rule (3 Completed Referrals Requirement)
+| - Sub-second In-Memory Caching (0.5s - 1.0s Speed Goal)
+| - English Clean User Panel & Centralized Admin Management
 |--------------------------------------------------------------------------
 */
 
 const express = require('express');
 
-const BOT_TOKEN = '8809628706:AAFABbmhw3fPakfRLPBbmIQt77qsPlLR48A';
-const BOT_USERNAME = 'AuraStarPayBot';
+const BOT_TOKEN = '8898720154:AAF_7ZxN3iAUiIFLMMeqYq1L96RmekO2mW4';
+const BOT_USERNAME = 'AuraStarPay1Bot';
 const APP_URL = 'https://star-pay-go71.onrender.com';
 const SUPER_ADMIN_ID = '8045367594';
+
+// Default Central Settings
+const DEFAULT_SUPPORT_URL = 'https://t.me/AuraSupportsBot';
+const DEFAULT_PAYMENT_CHANNEL_ID = '-1003945593094';
+const DEFAULT_PAYMENT_CHANNEL_URL = 'https://t.me/AuraPaymentChannel';
+const DEVELOPER_NAME = 'SΛKIB 〆 DΞVΞLOPΞR';
+const DEVELOPER_LINK = 'https://t.me/Sakib_Developer1';
 
 /*
 |--------------------------------------------------------------------------
 | FIREBASE CONFIGURATION
 |--------------------------------------------------------------------------
 */
-const FIREBASE_URL = 'https://aura-star-pay-default-rtdb.firebaseio.com';
+// Supports both direct RTDB and firebaseapp base formats
+let FIREBASE_URL = 'https://aura-star-pay-1-default-rtdb.firebaseio.com';
+const FIREBASE_FALLBACK_URL = 'https://aura-star-pay-1.firebaseio.com';
 const FIREBASE_API_KEY = 'AIzaSyDq337oNcs6G7m3ahBnOhnHzgBhzr892GU';
-const FIREBASE_AUTH_EMAIL = 'sakib301210@gmail.com';
-const FIREBASE_AUTH_PASSWORD = '@mayabiri';
+const FIREBASE_AUTH_EMAIL = 'tasin301210@gmail.com';
+const FIREBASE_AUTH_PASSWORD = '#mayabiri';
 
 /*
 |--------------------------------------------------------------------------
-| HIGH PERFORMANCE IN-MEMORY CACHE (0.5s - 1s Response Goal)
+| ULTRA-FAST IN-MEMORY CACHE STORES (SUB-SECOND GOAL)
 |--------------------------------------------------------------------------
 */
 const cache = {
@@ -45,7 +54,11 @@ const cache = {
     blacklist: null,
     blacklistExpiresAt: 0,
     whitelist: null,
-    whitelistExpiresAt: 0
+    whitelistExpiresAt: 0,
+    botActive: null,
+    botActiveExpiresAt: 0,
+    whitelistOnly: null,
+    whitelistOnlyExpiresAt: 0
 };
 
 function invalidateUserCache(userId) {
@@ -63,6 +76,8 @@ function invalidateSecurityCache() {
     cache.blacklistExpiresAt = 0;
     cache.whitelist = null;
     cache.whitelistExpiresAt = 0;
+    cache.whitelistOnly = null;
+    cache.whitelistOnlyExpiresAt = 0;
 }
 
 function invalidateForceChannelsCache() {
@@ -193,9 +208,10 @@ async function firebaseRequest(path, method = 'GET', data = null) {
 
     try {
         let res = await fetch(url, options);
-        if (!res.ok && token && (res.status === 401 || res.status === 403)) {
-            const fallbackUrl = `${FIREBASE_URL.replace(/\/+$/, '')}/${path}.json`;
-            res = await fetch(fallbackUrl, options);
+        if (!res.ok && (res.status === 404 || res.status === 401 || res.status === 403)) {
+            // Try fallback URL if default failed
+            const fallback = `${FIREBASE_FALLBACK_URL.replace(/\/+$/, '')}/${path}.json${token ? `?auth=${encodeURIComponent(token)}` : ''}`;
+            res = await fetch(fallback, options);
         }
         if (!res.ok) return null;
         const text = await res.text();
@@ -285,7 +301,7 @@ async function sendLongMessage(chatId, text, extra = null) {
 
 /*
 |--------------------------------------------------------------------------
-| CACHED DATABASE HELPERS
+| DATABASE & CACHE ACCESSORS
 |--------------------------------------------------------------------------
 */
 async function getUser(userId) {
@@ -376,9 +392,33 @@ async function getUserWithdrawals(userId) {
 
 /*
 |--------------------------------------------------------------------------
-| SECURITY: BLACKLIST / WHITELIST
+| BOT STATUS (ON / OFF) & SECURITY ACCESS RULES
 |--------------------------------------------------------------------------
 */
+async function isBotActive() {
+    const now = Date.now();
+    if (cache.botActive !== null && now < cache.botActiveExpiresAt) {
+        return cache.botActive;
+    }
+    const status = await getSetting('bot_power_status', 'on');
+    const isActive = status !== 'off';
+    cache.botActive = isActive;
+    cache.botActiveExpiresAt = now + 30000;
+    return isActive;
+}
+
+async function isWhitelistOnlyMode() {
+    const now = Date.now();
+    if (cache.whitelistOnly !== null && now < cache.whitelistOnlyExpiresAt) {
+        return cache.whitelistOnly;
+    }
+    const status = await getSetting('whitelist_only_mode', 'off');
+    const isWl = status === 'on';
+    cache.whitelistOnly = isWl;
+    cache.whitelistOnlyExpiresAt = now + 30000;
+    return isWl;
+}
+
 async function getBlacklist() {
     const now = Date.now();
     if (cache.blacklist && now < cache.blacklistExpiresAt) return cache.blacklist;
@@ -397,25 +437,74 @@ async function getWhitelist() {
     return cache.whitelist;
 }
 
-async function isBlacklisted(userId) {
-    const uidStr = String(userId);
-    if (isSuperAdmin(uidStr)) return false;
-    const wl = await getWhitelist();
-    if (wl[uidStr]) return false; // Whitelist overrides blacklist
-    const bl = await getBlacklist();
-    return Boolean(bl[uidStr]);
+function isSuperAdmin(userId) {
+    return String(userId).trim() === SUPER_ADMIN_ID;
 }
 
-async function isWhitelisted(userId) {
-    const uidStr = String(userId);
+async function isAdmin(userId) {
+    const uidStr = String(userId).trim();
     if (isSuperAdmin(uidStr)) return true;
-    const wl = await getWhitelist();
-    return Boolean(wl[uidStr]);
+    const admins = await getAllAdmins();
+    return Boolean(admins[uidStr] && admins[uidStr].active === true);
+}
+
+// Check security access for a user
+async function checkUserAccess(userId) {
+    const uidStr = String(userId).trim();
+    if (await isAdmin(uidStr)) return { allowed: true };
+
+    // 1. Blacklist check
+    const bl = await getBlacklist();
+    if (bl[uidStr]) {
+        return { allowed: false, reason: 'blacklisted' };
+    }
+
+    // 2. Whitelist-only mode check
+    const wlOnly = await isWhitelistOnlyMode();
+    if (wlOnly) {
+        const wl = await getWhitelist();
+        if (!wl[uidStr]) {
+            return { allowed: false, reason: 'whitelist_only' };
+        }
+    }
+
+    // 3. Bot Power ON/OFF Check
+    const active = await isBotActive();
+    if (!active) {
+        return { allowed: false, reason: 'bot_off' };
+    }
+
+    return { allowed: true };
 }
 
 /*
 |--------------------------------------------------------------------------
-| ADMIN & STATE MANAGEMENT
+| MAINTENANCE MODE OFF NOTICE WITH BUTTONS
+|--------------------------------------------------------------------------
+*/
+async function sendBotOffMessage(chatId) {
+    const supportUrl = await getSetting('support_url', DEFAULT_SUPPORT_URL);
+    const sourceLink = await getSetting('source_link', DEVELOPER_LINK);
+    const sourceName = await getSetting('source_name', DEVELOPER_NAME);
+
+    const text = 
+        `⛔ <b>Bot currently off!</b>\n\n` +
+        `🔧 <b>Source:</b> ${escapeHtml(sourceName)}\n` +
+        `Support: @${escapeHtml(supportUrl.split('/').pop().replace('@', ''))}`;
+
+    const keyboard = {
+        inline_keyboard: [
+            [{ text: `🔧 Source: ${sourceName}`, url: sourceLink, style: 'primary' }],
+            [{ text: '🎧 Support', url: supportUrl, style: 'success' }]
+        ]
+    };
+
+    return await sendMessage(chatId, text, keyboard);
+}
+
+/*
+|--------------------------------------------------------------------------
+| ADMIN & USER STATE
 |--------------------------------------------------------------------------
 */
 async function setAdminState(userId, action, extra = {}) {
@@ -452,20 +541,9 @@ async function clearUserState(userId) {
     await firebaseRequest(`user_states/${userId}`, 'DELETE');
 }
 
-function isSuperAdmin(userId) {
-    return String(userId).trim() === SUPER_ADMIN_ID;
-}
-
-async function isAdmin(userId) {
-    const uidStr = String(userId).trim();
-    if (isSuperAdmin(uidStr)) return true;
-    const admins = await getAllAdmins();
-    return Boolean(admins[uidStr] && admins[uidStr].active === true);
-}
-
 /*
 |--------------------------------------------------------------------------
-| KEYBOARDS
+| UI KEYBOARDS (NO DUPLICATES, STYLED BUTTONS)
 |--------------------------------------------------------------------------
 */
 async function getUserMenu(userId) {
@@ -491,22 +569,28 @@ async function getUserMenu(userId) {
     return { keyboard: keyboard, resize_keyboard: true, is_persistent: true };
 }
 
-function getAdminMenu(superAdmin) {
+async function getAdminMenu(superAdmin) {
+    const botActive = await isBotActive();
+    const wlMode = await isWhitelistOnlyMode();
+
     const keyboard = [
         [
-            { text: '⚙️ Central Settings', style: 'primary' },
-            { text: '👥 User & Balance', style: 'success' }
+            { text: botActive ? '🟢 Bot: Active (ON)' : '🔴 Bot: OFF (Maintenance)', style: botActive ? 'success' : 'danger' },
+            { text: '⚙️ Central Settings', style: 'primary' }
         ],
         [
-            { text: '📢 Channel Broadcast', style: 'primary' },
-            { text: '📢 Users Broadcast', style: 'success' }
+            { text: '👥 User & Balance', style: 'primary' },
+            { text: '📢 Channel Broadcast', style: 'success' }
         ],
         [
-            { text: '🛡️ Security Management', style: 'danger' },
-            { text: '📢 Force Channels', style: 'primary' }
+            { text: '📢 Users Broadcast', style: 'primary' },
+            { text: `🛡️ Security (${wlMode ? 'Whitelist Only' : 'Standard'})`, style: 'danger' }
         ],
         [
-            { text: '⭐ সেট Payouts Done', style: 'primary' },
+            { text: '📢 Force Channels', style: 'primary' },
+            { text: '⭐ সেট Payouts Done', style: 'success' }
+        ],
+        [
             { text: '🔧 Source Settings', style: 'danger' }
         ]
     ];
@@ -530,7 +614,7 @@ function centralSettingsKeyboard() {
         inline_keyboard: [
             [
                 { text: '🎧 Support Bot Link', callback_data: 'cfg_support', style: 'primary' },
-                { text: '💳 Payment Channel', callback_data: 'cfg_pay_channel', style: 'primary' }
+                { text: '💳 Payment Channel ID', callback_data: 'cfg_pay_channel', style: 'primary' }
             ],
             [
                 { text: '🪙 Coin Name', callback_data: 'cfg_coin', style: 'success' },
@@ -548,9 +632,13 @@ function centralSettingsKeyboard() {
     };
 }
 
-function securityKeyboard() {
+async function securityKeyboard() {
+    const wlMode = await isWhitelistOnlyMode();
     return {
         inline_keyboard: [
+            [
+                { text: wlMode ? '🔒 Mode: Whitelist Only (Active)' : '🔓 Mode: Standard (All allowed)', callback_data: 'sec_toggle_wl_mode', style: wlMode ? 'danger' : 'success' }
+            ],
             [
                 { text: '🚫 Add Blacklist', callback_data: 'sec_add_bl', style: 'danger' },
                 { text: '✅ Add Whitelist', callback_data: 'sec_add_wl', style: 'success' }
@@ -560,8 +648,8 @@ function securityKeyboard() {
                 { text: '❌ Remove Whitelist', callback_data: 'sec_rem_wl', style: 'success' }
             ],
             [
-                { text: '📋 Blacklist List', callback_data: 'sec_list_bl', style: 'primary' },
-                { text: '📋 Whitelist List', callback_data: 'sec_list_wl', style: 'primary' }
+                { text: '📋 Blacklist Users', callback_data: 'sec_list_bl', style: 'primary' },
+                { text: '📋 Whitelist Users', callback_data: 'sec_list_wl', style: 'primary' }
             ]
         ]
     };
@@ -632,7 +720,7 @@ function claimOnlyKeyboard() {
 
 /*
 |--------------------------------------------------------------------------
-| TELEGRAM CHAT & ADMIN STATUS HELPERS
+| TELEGRAM CHANNEL STATUS & PARALLEL VERIFICATION
 |--------------------------------------------------------------------------
 */
 async function getTelegramUsername(userId) {
@@ -641,7 +729,8 @@ async function getTelegramUsername(userId) {
 }
 
 async function isBotAdminInChat(chatId) {
-    const res = await telegramApi('getChatMember', { chat_id: chatId, user_id: BOT_TOKEN.split(':')[0] });
+    const botId = BOT_TOKEN.split(':')[0];
+    const res = await telegramApi('getChatMember', { chat_id: chatId, user_id: botId });
     if (res && res.ok) {
         return ['administrator', 'creator'].includes(res.result?.status);
     }
@@ -749,12 +838,12 @@ function buildRejectedAlertText(withdraw, adminUsername, coinName) {
 
 /*
 |--------------------------------------------------------------------------
-| MAIN TELEGRAM UPDATE HANDLER
+| MAIN TELEGRAM UPDATE DISPATCHER
 |--------------------------------------------------------------------------
 */
 async function handleUpdate(update) {
     // -------------------------------------------------------------
-    // CALLBACK QUERY HANDLER
+    // 1. CALLBACK QUERY PROCESSING
     // -------------------------------------------------------------
     if (update.callback_query) {
         const callback = update.callback_query;
@@ -763,13 +852,21 @@ async function handleUpdate(update) {
         const chatId = callback.message?.chat?.id;
         const messageId = callback.message?.message_id;
 
-        // Security Blacklist Check
-        if (await isBlacklisted(fromId)) {
-            await answerCallback(callback.id, "⛔ Access Denied! You are blacklisted.", true);
+        // General Security & Maintenance Check
+        const access = await checkUserAccess(fromId);
+        if (!access.allowed) {
+            if (access.reason === 'bot_off') {
+                await answerCallback(callback.id, "⛔ Bot currently off!", true);
+                await sendBotOffMessage(fromId);
+            } else if (access.reason === 'blacklisted') {
+                await answerCallback(callback.id, "⛔ Access Denied! You are blacklisted.", true);
+            } else if (access.reason === 'whitelist_only') {
+                await answerCallback(callback.id, "⛔ Whitelist Mode active! You are not authorized.", true);
+            }
             return;
         }
 
-        // Verify Join Button
+        // Verify Channel Join Button
         if (data === 'verify_join') {
             await answerCallback(callback.id);
             invalidateUserCache(fromId);
@@ -868,7 +965,6 @@ async function handleUpdate(update) {
                     processed_at: now
                 });
                 
-                // Mark user as having completed first withdraw
                 await updateUser(withdraw.user_id, { has_withdrawn: true });
                 await sendMessage(withdraw.user_id, `🎉 <b>Withdrawal Approved!</b>\n\n💰 Amount: <b>${formatNumber(withdraw.after_fee)} ${escapeHtml(coinName)}</b>\n🧾 ID: <code>${withdraw.transaction_id}</code>`);
 
@@ -901,22 +997,24 @@ async function handleUpdate(update) {
             }
         }
 
-        // Admin Callbacks
+        // ---------------------------------------------------------
+        // ADMIN CALLBACK ACTIONS
+        // ---------------------------------------------------------
         if (await isAdmin(fromId)) {
-            // CENTRAL SETTINGS NAVIGATION
+            // CENTRAL SETTINGS CALLBACKS
             if (data === 'cfg_support') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'cfg_support');
-                const cur = await getSetting('support_url', 'https://t.me/Sakib_Developer1');
-                await sendMessage(fromId, `🎧 <b>Support Bot / Admin Link</b>\n\nবর্তমান লিংক: <code>${escapeHtml(cur)}</code>\n\nনতুন সাপোর্ট বট বা অ্যাকাউন্টের লিংক দিন:`, getCancelKeyboard());
+                const cur = await getSetting('support_url', DEFAULT_SUPPORT_URL);
+                await sendMessage(fromId, `🎧 <b>Support Bot / Admin Link</b>\n\nবর্তমান লিংক: <code>${escapeHtml(cur)}</code>\n\nনতুন লিংক পাঠান (যেমন: <code>https://t.me/AuraSupportsBot</code>):`, getCancelKeyboard());
                 return;
             }
 
             if (data === 'cfg_pay_channel') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'cfg_pay_channel');
-                const cur = await getSetting('withdraw_request_channel', '');
-                await sendMessage(fromId, `💳 <b>Withdraw Request Channel</b>\n\nবর্তমান চ্যানেল: <code>${escapeHtml(cur || 'Not Set')}</code>\n\nনতুন Channel ID পাঠান (যেমন: <code>-1001234567890</code>):`, getCancelKeyboard());
+                const cur = await getSetting('withdraw_request_channel', DEFAULT_PAYMENT_CHANNEL_ID);
+                await sendMessage(fromId, `💳 <b>Withdraw Payment Channel ID</b>\n\nবর্তমান আইডি: <code>${escapeHtml(cur)}</code>\n\nনতুন Channel ID পাঠান (যেমন: <code>-1003945593094</code>):`, getCancelKeyboard());
                 return;
             }
 
@@ -924,7 +1022,7 @@ async function handleUpdate(update) {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'cfg_coin');
                 const cur = await getSetting('coin_name', 'STAR');
-                await sendMessage(fromId, `🪙 <b>Coin / Currency Name</b>\n\nবর্তমান নাম: <b>${escapeHtml(cur)}</b>\n\nনতুন নাম লিখুন (যেমন: STAR, COIN, BDT):`, getCancelKeyboard());
+                await sendMessage(fromId, `🪙 <b>Coin / Currency Name</b>\n\nবর্তমান কারেন্সি: <b>${escapeHtml(cur)}</b>\n\nনতুন নাম পাঠান (যেমন: STAR, COIN, BDT):`, getCancelKeyboard());
                 return;
             }
 
@@ -933,7 +1031,7 @@ async function handleUpdate(update) {
                 await setAdminState(fromId, 'cfg_referral');
                 const cur = await getSetting('referral_bonus', 1);
                 const coin = await getSetting('coin_name', 'STAR');
-                await sendMessage(fromId, `👥 <b>Referral Reward</b>\n\nবর্তমান রেফারে রিওয়ার্ড: <b>${formatNumber(cur)} ${escapeHtml(coin)}</b>\n\nনতুন এমাউন্ট লিখুন:`, getCancelKeyboard());
+                await sendMessage(fromId, `👥 <b>Referral Reward</b>\n\nবর্তমান রিওয়ার্ড: <b>${formatNumber(cur)} ${escapeHtml(coin)}</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
 
@@ -942,7 +1040,7 @@ async function handleUpdate(update) {
                 await setAdminState(fromId, 'cfg_withdraw');
                 const cur = await getSetting('min_withdraw', 2);
                 const coin = await getSetting('coin_name', 'STAR');
-                await sendMessage(fromId, `💰 <b>Fixed Minimum Withdraw Amount</b>\n\nবর্তমান উইথড্র অ্যামাউন্ট: <b>${formatNumber(cur)} ${escapeHtml(coin)}</b>\n\nনতুন অ্যামাউন্ট লিখুন:`, getCancelKeyboard());
+                await sendMessage(fromId, `💰 <b>Fixed Minimum Withdraw</b>\n\nবর্তমান ফিক্সড উইথড্র: <b>${formatNumber(cur)} ${escapeHtml(coin)}</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
 
@@ -950,7 +1048,7 @@ async function handleUpdate(update) {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'cfg_first_refs');
                 const cur = await getSetting('first_withdraw_refs', 3);
-                await sendMessage(fromId, `🎯 <b>First Withdraw Referral Requirement</b>\n\nবর্তমানে প্রথম উইথড্রর জন্য রেফার প্রয়োজন: <b>${cur} টি</b>\n\nনতুন সংখ্যা লিখুন (যদি শর্ত না রাখতে চান তবে 0 দিন):`, getCancelKeyboard());
+                await sendMessage(fromId, `🎯 <b>First Withdraw Referral Requirement</b>\n\nবর্তমানে প্রথম উইথড্র করতে রেফার প্রয়োজন: <b>${cur} টি</b>\n\nনতুন সংখ্যা লিখুন (শর্ত তুলে নিতে 0 লিখুন):`, getCancelKeyboard());
                 return;
             }
 
@@ -959,7 +1057,7 @@ async function handleUpdate(update) {
                 await setAdminState(fromId, 'cfg_welcome');
                 const cur = await getSetting('welcome_bonus', 0);
                 const coin = await getSetting('coin_name', 'STAR');
-                await sendMessage(fromId, `🎁 <b>Welcome Bonus</b>\n\nবর্তমান বোনাস: <b>${formatNumber(cur)} ${escapeHtml(coin)}</b>\n\nনতুন বোনাস এমাউন্ট লিখুন:`, getCancelKeyboard());
+                await sendMessage(fromId, `🎁 <b>Welcome Bonus</b>\n\nবর্তমান বোনাস: <b>${formatNumber(cur)} ${escapeHtml(coin)}</b>\n\nনতুন Amount পাঠান:`, getCancelKeyboard());
                 return;
             }
 
@@ -967,36 +1065,49 @@ async function handleUpdate(update) {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'cfg_fee');
                 const cur = await getSetting('withdraw_fee_percent', 0);
-                await sendMessage(fromId, `📊 <b>Withdrawal Fee (%)</b>\n\nবর্তমান ফি: <b>${formatNumber(cur)}%</b>\n\nনতুন পার্সেন্টেজ লিখুন (0-100):`, getCancelKeyboard());
+                await sendMessage(fromId, `📊 <b>Withdrawal Fee (%)</b>\n\nবর্তমান ফি: <b>${formatNumber(cur)}%</b>\n\nনতুন পার্সেন্টেজ পাঠান (0-100):`, getCancelKeyboard());
                 return;
             }
 
-            // SECURITY ACTIONS
+            // SECURITY: TOGGLE WHITELIST-ONLY MODE
+            if (data === 'sec_toggle_wl_mode') {
+                const curMode = await isWhitelistOnlyMode();
+                const newMode = curMode ? 'off' : 'on';
+                await setSetting('whitelist_only_mode', newMode);
+                invalidateSecurityCache();
+                await answerCallback(callback.id, `Whitelist Mode: ${newMode.toUpperCase()}`);
+                if (chatId && messageId) {
+                    await editMessageText(chatId, messageId, "🛡️ <b>Security Management</b>\nমোবাইল সিকিউরিটির মতো ব্লকলিস্ট ও হোয়াইটলিস্ট কন্ট্রোল:", await securityKeyboard());
+                }
+                return;
+            }
+
+            // SECURITY: ADD / REMOVE BLACKLIST & WHITELIST
             if (data === 'sec_add_bl') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'sec_add_bl');
-                await sendMessage(fromId, "🚫 <b>Add to Blacklist</b>\n\nব্ল্যাকলিস্ট করার জন্য ইউজারের Telegram ID দিন:", getCancelKeyboard());
+                await sendMessage(fromId, "🚫 <b>Add to Blacklist</b>\n\nইউজারের Telegram User ID পাঠান:", getCancelKeyboard());
                 return;
             }
 
             if (data === 'sec_add_wl') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'sec_add_wl');
-                await sendMessage(fromId, "✅ <b>Add to Whitelist</b>\n\nহোয়াইটলিস্ট করার জন্য ইউজারের Telegram ID দিন:", getCancelKeyboard());
+                await sendMessage(fromId, "✅ <b>Add to Whitelist</b>\n\nইউজারের Telegram User ID পাঠান:", getCancelKeyboard());
                 return;
             }
 
             if (data === 'sec_rem_bl') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'sec_rem_bl');
-                await sendMessage(fromId, "❌ <b>Remove from Blacklist</b>\n\nব্ল্যাকলিস্ট থেকে রিমুভ করার জন্য Telegram ID দিন:", getCancelKeyboard());
+                await sendMessage(fromId, "❌ <b>Remove from Blacklist</b>\n\nরিমুভ করতে Telegram User ID পাঠান:", getCancelKeyboard());
                 return;
             }
 
             if (data === 'sec_rem_wl') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'sec_rem_wl');
-                await sendMessage(fromId, "❌ <b>Remove from Whitelist</b>\n\nহোয়াইটলিস্ট থেকে রিমুভ করার জন্য Telegram ID দিন:", getCancelKeyboard());
+                await sendMessage(fromId, "❌ <b>Remove from Whitelist</b>\n\nরিমুভ করতে Telegram User ID পাঠান:", getCancelKeyboard());
                 return;
             }
 
@@ -1005,7 +1116,7 @@ async function handleUpdate(update) {
                 const bl = await getBlacklist();
                 const ids = Object.keys(bl);
                 let txt = `🚫 <b>Blacklist Users (${ids.length})</b>\n━━━━━━━━━━━━━━━━━━\n`;
-                if (!ids.length) txt += "বর্তমানে কোনো ব্ল্যাকলিস্ট করা ইউজার নেই।";
+                if (!ids.length) txt += "বর্তমানে কোনো ইউজার ব্ল্যাকলিস্টে নেই।";
                 else txt += ids.map(id => `• <code>${escapeHtml(id)}</code>`).join('\n');
                 await sendLongMessage(fromId, txt);
                 return;
@@ -1016,31 +1127,31 @@ async function handleUpdate(update) {
                 const wl = await getWhitelist();
                 const ids = Object.keys(wl);
                 let txt = `✅ <b>Whitelist Users (${ids.length})</b>\n━━━━━━━━━━━━━━━━━━\n`;
-                if (!ids.length) txt += "বর্তমানে কোনো হোয়াইটলিস্ট করা ইউজার নেই।";
+                if (!ids.length) txt += "বর্তমানে কোনো ইউজার হোয়াইটলিস্টে নেই।";
                 else txt += ids.map(id => `• <code>${escapeHtml(id)}</code>`).join('\n');
                 await sendLongMessage(fromId, txt);
                 return;
             }
 
-            // INDIVIDUAL CHANNEL BROADCAST SELECTION
+            // BROADCAST: SINGLE CHANNEL SELECTION
             const bcChMatch = data.match(/^bc_select_channel_([A-Za-z0-9_-]+)$/);
             if (bcChMatch) {
                 await answerCallback(callback.id);
                 const chKey = bcChMatch[1];
                 const channels = await getAllForceChannels();
-                const targetChannel = channels[chKey];
+                const target = channels[chKey];
 
-                if (!targetChannel) {
+                if (!target) {
                     await sendMessage(fromId, "⚠️ চ্যানেলটি পাওয়া যায়নি!");
                     return;
                 }
 
                 await setAdminState(fromId, 'awaiting_channel_single_msg', {
-                    target_channel_id: targetChannel.channel_id,
-                    target_channel_name: targetChannel.channel_name || 'Channel'
+                    target_channel_id: target.channel_id,
+                    target_channel_name: target.channel_name || 'Channel'
                 });
 
-                await sendMessage(fromId, `📢 <b>Broadcasting to: ${escapeHtml(targetChannel.channel_name)}</b>\n\nযে মেসেজটি এই চ্যানেলে ব্রডকাস্ট করতে চান সেটি পাঠান (Text, Media, Forward):`, getCancelKeyboard());
+                await sendMessage(fromId, `📢 <b>Selected Channel: ${escapeHtml(target.channel_name)}</b>\n\nশুধুমাত্র এই চ্যানেলে ব্রডকাস্ট করার জন্য মেসেজটি পাঠান (Text, Media, Forward):`, getCancelKeyboard());
                 return;
             }
 
@@ -1052,6 +1163,37 @@ async function handleUpdate(update) {
             }
 
             // BROADCAST CONFIRMATION
+            if (data === 'confirm_broadcast_single_ch') {
+                await answerCallback(callback.id);
+                const aState = await getAdminState(fromId);
+                if (!aState || aState.action !== 'confirm_broadcast_single_ch') {
+                    await sendMessage(fromId, "⚠️ <b>Session Expired!</b>");
+                    return;
+                }
+                await clearAdminState(fromId);
+                if (chatId && messageId) await deleteMessage(chatId, messageId);
+
+                const res = await copyMessage(aState.target_channel_id, aState.from_chat_id, aState.message_id);
+                if (res && res.ok) {
+                    const bId = `bc_single_${Date.now()}`;
+                    await firebaseRequest(`broadcast_history/${bId}`, 'PUT', {
+                        type: 'single_channel',
+                        sent: { [aState.target_channel_id]: res.result.message_id },
+                        created_at: Math.floor(Date.now() / 1000)
+                    });
+
+                    const deleteKeyboard = {
+                        inline_keyboard: [
+                            [{ text: '🗑️ Delete Broadcast', callback_data: `delete_bc_${bId}`, style: 'danger' }]
+                        ]
+                    };
+                    await sendMessage(chatId, `✅ <b>সফলভাবে ${escapeHtml(aState.target_channel_name)} চ্যানেলে ব্রডকাস্ট সম্পন্ন হয়েছে!</b>`, deleteKeyboard);
+                } else {
+                    await sendMessage(chatId, `❌ <b>পোস্ট ব্যর্থ হয়েছে!</b>\nকারণ: <code>${escapeHtml(res?.description || 'Unknown error / Not admin')}</code>`, await getAdminMenu(isSuperAdmin(fromId)));
+                }
+                return;
+            }
+
             if (data === 'confirm_broadcast_users') {
                 await answerCallback(callback.id);
                 const aState = await getAdminState(fromId);
@@ -1099,37 +1241,6 @@ async function handleUpdate(update) {
                 return;
             }
 
-            if (data === 'confirm_broadcast_single_ch') {
-                await answerCallback(callback.id);
-                const aState = await getAdminState(fromId);
-                if (!aState || aState.action !== 'confirm_broadcast_single_ch') {
-                    await sendMessage(fromId, "⚠️ <b>Session Expired!</b>");
-                    return;
-                }
-                await clearAdminState(fromId);
-                if (chatId && messageId) await deleteMessage(chatId, messageId);
-
-                const res = await copyMessage(aState.target_channel_id, aState.from_chat_id, aState.message_id);
-                if (res && res.ok) {
-                    const bId = `bc_single_${Date.now()}`;
-                    await firebaseRequest(`broadcast_history/${bId}`, 'PUT', {
-                        type: 'single_channel',
-                        sent: { [aState.target_channel_id]: res.result.message_id },
-                        created_at: Math.floor(Date.now() / 1000)
-                    });
-
-                    const deleteKeyboard = {
-                        inline_keyboard: [
-                            [{ text: '🗑️ Delete Broadcast', callback_data: `delete_bc_${bId}`, style: 'danger' }]
-                        ]
-                    };
-                    await sendMessage(chatId, `✅ <b>সফলভাবে ${escapeHtml(aState.target_channel_name)} চ্যানেলে ব্রডকাস্ট সম্পন্ন হয়েছে!</b>`, deleteKeyboard);
-                } else {
-                    await sendMessage(chatId, `❌ <b>পোস্ট ব্যর্থ হয়েছে!</b>\nকারণ: <code>${escapeHtml(res?.description || 'Unknown error')}</code>`, getAdminMenu(isSuperAdmin(fromId)));
-                }
-                return;
-            }
-
             if (data === 'confirm_broadcast_channels') {
                 await answerCallback(callback.id);
                 const aState = await getAdminState(fromId);
@@ -1154,7 +1265,7 @@ async function handleUpdate(update) {
                         if (res && res.ok && res.result?.message_id) {
                             success++;
                             sentRecords[ch.channel_id] = res.result.message_id;
-                            reportDetails += `\n✅ <b>${escapeHtml(cName)}</b>: পোস্ট সফল!`;
+                            reportDetails += `\n✅ <b>${escapeHtml(cName)}</b>: সফল!`;
                         } else {
                             failed++;
                             reportDetails += `\n❌ <b>${escapeHtml(cName)}</b>: <code>${escapeHtml(res?.description || 'Error')}</code>`;
@@ -1192,7 +1303,7 @@ async function handleUpdate(update) {
                 await answerCallback(callback.id);
                 await clearAdminState(fromId);
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
-                await sendMessage(chatId, "❌ ব্রডকাস্ট বাতিল করা হয়েছে।", getAdminMenu(isSuperAdmin(fromId)));
+                await sendMessage(chatId, "❌ ব্রডকাস্ট বাতিল করা হয়েছে।", await getAdminMenu(isSuperAdmin(fromId)));
                 return;
             }
 
@@ -1216,7 +1327,7 @@ async function handleUpdate(update) {
 
                 await firebaseRequest(`broadcast_history/${bId}`, 'DELETE');
                 if (chatId && messageId) await deleteMessage(chatId, messageId);
-                await sendMessage(chatId, `🗑️ <b>${delCount} টি প্রেরিত মেসেজ ডিলিট করা হয়েছে!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                await sendMessage(chatId, `🗑️ <b>${delCount} টি প্রেরিত মেসেজ মুছে ফেলা হয়েছে!</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                 return;
             }
 
@@ -1252,7 +1363,7 @@ async function handleUpdate(update) {
             if (data === 'force_add') {
                 await answerCallback(callback.id);
                 await setAdminState(fromId, 'add_force_channel_id');
-                await sendMessage(fromId, "➕ <b>ফোর্স চ্যানেল যোগ করুন</b>\n\nChannel ID পাঠান (যেমন: <code>-1001234567890</code>):", getCancelKeyboard());
+                await sendMessage(fromId, "➕ <b>ফোর্স চ্যানেল যোগ করুন</b>\n\nChannel ID পাঠান (যেমন: <code>-1003945593094</code>):", getCancelKeyboard());
                 return;
             }
 
@@ -1277,7 +1388,7 @@ async function handleUpdate(update) {
                 await firebaseRequest(`force_channels/${removeMatch[1]}`, 'DELETE');
                 invalidateForceChannelsCache();
                 cache.userChannels.clear();
-                await sendMessage(fromId, "✅ <b>চ্যানেল রিমুভ সম্পন্ন!</b>", getAdminMenu(isSuperAdmin(fromId)));
+                await sendMessage(fromId, "✅ <b>চ্যানেল রিমুভ সম্পন্ন!</b>", await getAdminMenu(isSuperAdmin(fromId)));
                 return;
             }
 
@@ -1313,7 +1424,7 @@ async function handleUpdate(update) {
     }
 
     // -------------------------------------------------------------
-    // MESSAGE HANDLERS
+    // 2. MESSAGE UPDATES
     // -------------------------------------------------------------
     if (update.message) {
         const msg = update.message;
@@ -1322,9 +1433,16 @@ async function handleUpdate(update) {
         const text = normalizeText(msg.text || '');
         const isAdm = await isAdmin(fromId);
 
-        // Security Check: Blacklist
-        if (await isBlacklisted(fromId)) {
-            await sendMessage(chatId, "⛔ <b>Access Denied!</b>\nYour account has been restricted by security policy.");
+        // Security & Maintenance Check
+        const access = await checkUserAccess(fromId);
+        if (!access.allowed) {
+            if (access.reason === 'bot_off') {
+                await sendBotOffMessage(chatId);
+            } else if (access.reason === 'blacklisted') {
+                await sendMessage(chatId, "⛔ <b>Access Denied!</b>\nYour account has been restricted by administrator.");
+            } else if (access.reason === 'whitelist_only') {
+                await sendMessage(chatId, "⛔ <b>Access Restricted!</b>\nOnly whitelisted members are currently allowed to use this bot.");
+            }
             return;
         }
 
@@ -1357,7 +1475,7 @@ async function handleUpdate(update) {
             return;
         }
 
-        // Fast Channel Verification Check
+        // Fast Force Join Verification
         if (!isAdm) {
             const joinedAll = await isUserJoinedAllChannels(fromId);
             if (!joinedAll) {
@@ -1372,7 +1490,7 @@ async function handleUpdate(update) {
         if (isAdm) {
             const aState = await getAdminState(fromId);
 
-            // 1. Single Channel Broadcast Message Input
+            // Single Channel Broadcast
             if (aState && aState.action === 'awaiting_channel_single_msg') {
                 await setAdminState(fromId, 'confirm_broadcast_single_ch', {
                     from_chat_id: chatId,
@@ -1396,7 +1514,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // 2. User Broadcast Message Input
+            // User Broadcast
             if (aState && aState.action === 'awaiting_broadcast_message') {
                 await setAdminState(fromId, 'confirm_broadcast_users', {
                     from_chat_id: chatId,
@@ -1418,7 +1536,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // 3. All Channels Broadcast Message Input
+            // All Channels Broadcast
             if (aState && aState.action === 'awaiting_channel_broadcast_message') {
                 await setAdminState(fromId, 'confirm_broadcast_channels', {
                     from_chat_id: chatId,
@@ -1440,7 +1558,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // Settings & Configurations Inputs
+            // Admin Settings Text Inputs
             if (aState && aState.action && text) {
                 const act = aState.action;
 
@@ -1450,7 +1568,7 @@ async function handleUpdate(update) {
                     await setSetting('support_url', link);
                     invalidateSettingsCache('support_url');
                     await clearAdminState(fromId);
-                    await sendMessage(chatId, `✅ <b>Support Bot Link Updated!</b>\n<code>${escapeHtml(link)}</code>`, getAdminMenu(isSuperAdmin(fromId)));
+                    await sendMessage(chatId, `✅ <b>Support Bot Link Updated:</b>\n<code>${escapeHtml(link)}</code>`, await getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
 
@@ -1458,7 +1576,7 @@ async function handleUpdate(update) {
                     await setSetting('withdraw_request_channel', text.trim());
                     invalidateSettingsCache('withdraw_request_channel');
                     await clearAdminState(fromId);
-                    await sendMessage(chatId, `✅ <b>Payment / Withdraw Request Channel Updated!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    await sendMessage(chatId, `✅ <b>Withdraw Payment Channel ID Updated: ${escapeHtml(text.trim())}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
 
@@ -1466,7 +1584,7 @@ async function handleUpdate(update) {
                     await setSetting('coin_name', text.trim().toUpperCase());
                     invalidateSettingsCache('coin_name');
                     await clearAdminState(fromId);
-                    await sendMessage(chatId, `✅ <b>Coin Name Updated: ${escapeHtml(text.trim().toUpperCase())}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                    await sendMessage(chatId, `✅ <b>Coin Name Updated: ${escapeHtml(text.trim().toUpperCase())}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
 
@@ -1475,7 +1593,7 @@ async function handleUpdate(update) {
                         await setSetting('referral_bonus', Number(text));
                         invalidateSettingsCache('referral_bonus');
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Referral Bonus Updated: ${formatNumber(text)}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Referral Bonus Updated: ${formatNumber(text)}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক সংখ্যা লিখুন:", getCancelKeyboard());
                     }
@@ -1487,7 +1605,7 @@ async function handleUpdate(update) {
                         await setSetting('min_withdraw', Number(text));
                         invalidateSettingsCache('min_withdraw');
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Fixed Withdraw Amount Updated: ${formatNumber(text)}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Fixed Withdraw Amount Updated: ${formatNumber(text)}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক সংখ্যা লিখুন:", getCancelKeyboard());
                     }
@@ -1499,7 +1617,7 @@ async function handleUpdate(update) {
                         await setSetting('first_withdraw_refs', parseInt(text));
                         invalidateSettingsCache('first_withdraw_refs');
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>First Withdraw Referral Requirement Updated: ${text} Refs</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>First Withdraw Referral Requirement: ${text} Refs</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক পূর্ণসংখ্যা দিন (যেমন: 3):", getCancelKeyboard());
                     }
@@ -1511,7 +1629,7 @@ async function handleUpdate(update) {
                         await setSetting('welcome_bonus', Number(text));
                         invalidateSettingsCache('welcome_bonus');
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Welcome Bonus Updated: ${formatNumber(text)}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Welcome Bonus Updated: ${formatNumber(text)}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক সংখ্যা লিখুন:", getCancelKeyboard());
                     }
@@ -1523,20 +1641,20 @@ async function handleUpdate(update) {
                         await setSetting('withdraw_fee_percent', Number(text));
                         invalidateSettingsCache('withdraw_fee_percent');
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Withdrawal Fee Updated: ${formatNumber(text)}%</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Withdrawal Fee Updated: ${formatNumber(text)}%</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ 0 থেকে 100 এর মধ্যে সংখ্যা দিন:", getCancelKeyboard());
                     }
                     return;
                 }
 
-                // SECURITY STATE INPUTS
+                // SECURITY INPUTS
                 if (act === 'sec_add_bl') {
                     if (/^\d+$/.test(text)) {
                         await firebaseRequest(`security/blacklist/${text}`, 'PUT', { added_by: fromId, added_at: Math.floor(Date.now() / 1000) });
                         invalidateSecurityCache();
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `🚫 <b>User ${text} সফলভাবে Blacklist করা হয়েছে!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `🚫 <b>User ${text} সফলভাবে Blacklist করা হয়েছে!</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID দিন:", getCancelKeyboard());
                     }
@@ -1548,7 +1666,7 @@ async function handleUpdate(update) {
                         await firebaseRequest(`security/blacklist/${text}`, 'DELETE');
                         invalidateSecurityCache();
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>User ${text}-কে Blacklist থেকে রিমুভ করা হয়েছে!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>User ${text}-কে Blacklist থেকে রিমুভ করা হয়েছে!</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID দিন:", getCancelKeyboard());
                     }
@@ -1560,7 +1678,7 @@ async function handleUpdate(update) {
                         await firebaseRequest(`security/whitelist/${text}`, 'PUT', { added_by: fromId, added_at: Math.floor(Date.now() / 1000) });
                         invalidateSecurityCache();
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>User ${text} সফলভাবে Whitelist করা হয়েছে!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>User ${text} সফলভাবে Whitelist করা হয়েছে!</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID দিন:", getCancelKeyboard());
                     }
@@ -1572,20 +1690,20 @@ async function handleUpdate(update) {
                         await firebaseRequest(`security/whitelist/${text}`, 'DELETE');
                         invalidateSecurityCache();
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `❌ <b>User ${text}-কে Whitelist থেকে রিমুভ করা হয়েছে!</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `❌ <b>User ${text}-কে Whitelist থেকে রিমুভ করা হয়েছে!</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক Numeric User ID দিন:", getCancelKeyboard());
                     }
                     return;
                 }
 
-                // OTHER ADMIN INPUTS
+                // PAYOUTS DONE & SOURCE
                 if (act === 'set_payouts_done') {
                     if (isNumericAmount(text) && Number(text) >= 0) {
                         const formatted = formatNumber(Number(text));
                         await setSetting('custom_payouts_done', formatted);
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Payouts Done সেট করা হয়েছে:</b> <b>${formatted}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Payouts Done সেট করা হয়েছে:</b> <b>${formatted}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক সংখ্যা পাঠান:", getCancelKeyboard());
                     }
@@ -1594,22 +1712,23 @@ async function handleUpdate(update) {
 
                 if (act === 'set_source_info') {
                     const parts = text.split('|').map(s => s.trim());
-                    const sName = parts[0] || 'RJ Maker Pro';
-                    const sLink = parts[1] || '';
+                    const sName = parts[0] || DEVELOPER_NAME;
+                    const sLink = parts[1] || DEVELOPER_LINK;
 
                     await setSetting('source_name', sName);
                     await setSetting('source_link', sLink);
                     await clearAdminState(fromId);
-                    await sendMessage(chatId, `✅ <b>Source Updated!</b>\n\n🔧 ${escapeHtml(sName)}\n🔗 ${escapeHtml(sLink || 'None')}`, getAdminMenu(isSuperAdmin(fromId)));
+                    await sendMessage(chatId, `✅ <b>Source Updated!</b>\n\n🔧 ${escapeHtml(sName)}\n🔗 ${escapeHtml(sLink)}`, await getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
 
+                // ADMIN & FORCE CHANNELS
                 if (act === 'admin_add') {
                     if (/^\d+$/.test(text)) {
                         await firebaseRequest(`admins/${text}`, 'PUT', { active: true, added_by: fromId, added_at: Math.floor(Date.now() / 1000) });
                         cache.admins = null;
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, "🎉 <b>Admin Added Successfully!</b>", getAdminMenu(true));
+                        await sendMessage(chatId, "🎉 <b>Admin Added Successfully!</b>", await getAdminMenu(true));
                     } else {
                         await sendMessage(chatId, "❌ সঠিক Numeric ID দিন:", getCancelKeyboard());
                     }
@@ -1621,7 +1740,7 @@ async function handleUpdate(update) {
                         await firebaseRequest(`admins/${text}`, 'DELETE');
                         cache.admins = null;
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, "✅ <b>Admin Removed Successfully!</b>", getAdminMenu(true));
+                        await sendMessage(chatId, "✅ <b>Admin Removed Successfully!</b>", await getAdminMenu(true));
                     } else {
                         await sendMessage(chatId, "❌ Super Admin রিমুভ করা যাবে না:", getCancelKeyboard());
                     }
@@ -1631,7 +1750,7 @@ async function handleUpdate(update) {
                 if (act === 'add_force_channel_id') {
                     if (/^-100\d+$/.test(text)) {
                         await setAdminState(fromId, 'add_force_channel_link', { channel_id: text });
-                        await sendMessage(chatId, "🔗 <b>Channel Link দিন:</b>\n\nExample: <code>https://t.me/example</code>", getCancelKeyboard());
+                        await sendMessage(chatId, "🔗 <b>Channel Link দিন:</b>\n\nExample: <code>https://t.me/AuraPaymentChannel</code>", getCancelKeyboard());
                     } else {
                         await sendMessage(chatId, "❌ সঠিক Channel ID দিন:", getCancelKeyboard());
                     }
@@ -1657,7 +1776,7 @@ async function handleUpdate(update) {
                     invalidateForceChannelsCache();
                     cache.userChannels.clear();
                     await clearAdminState(fromId);
-                    await sendMessage(chatId, "🎉 <b>Force Join Channel Added!</b>", getAdminMenu(isSuperAdmin(fromId)));
+                    await sendMessage(chatId, "🎉 <b>Force Join Channel Added!</b>", await getAdminMenu(isSuperAdmin(fromId)));
                     return;
                 }
 
@@ -1689,7 +1808,7 @@ async function handleUpdate(update) {
                         const newBal = Number(targetUser.balance || 0) + amt;
                         await updateUser(aState.target_id, { balance: newBal });
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Added +${formatNumber(amt)} ${escapeHtml(coin)}</b>\n💰 New Balance: <b>${formatNumber(newBal)} ${escapeHtml(coin)}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Added +${formatNumber(amt)} ${escapeHtml(coin)}</b>\n💰 New Balance: <b>${formatNumber(newBal)} ${escapeHtml(coin)}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                         try {
                             await sendMessage(aState.target_id, `🎁 <b>+${formatNumber(amt)} ${escapeHtml(coin)} added to your balance!</b>\n💰 Current Balance: <b>${formatNumber(newBal)} ${escapeHtml(coin)}</b>`);
                         } catch {}
@@ -1725,7 +1844,7 @@ async function handleUpdate(update) {
                         const newBal = Math.max(0, Number(targetUser.balance || 0) - amt);
                         await updateUser(aState.target_id, { balance: newBal });
                         await clearAdminState(fromId);
-                        await sendMessage(chatId, `✅ <b>Deducted -${formatNumber(amt)} ${escapeHtml(coin)}</b>\n💰 New Balance: <b>${formatNumber(newBal)} ${escapeHtml(coin)}</b>`, getAdminMenu(isSuperAdmin(fromId)));
+                        await sendMessage(chatId, `✅ <b>Deducted -${formatNumber(amt)} ${escapeHtml(coin)}</b>\n💰 New Balance: <b>${formatNumber(newBal)} ${escapeHtml(coin)}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                         try {
                             await sendMessage(aState.target_id, `⚠️ <b>-${formatNumber(amt)} ${escapeHtml(coin)} deducted from your balance!</b>\n💰 Current Balance: <b>${formatNumber(newBal)} ${escapeHtml(coin)}</b>`);
                         } catch {}
@@ -1779,7 +1898,7 @@ async function handleUpdate(update) {
                 const afterFee = Math.max(0, fixedAmount - (fixedAmount * fee / 100));
                 const txId = `${fromId}${Math.floor(Date.now() / 1000)}`;
 
-                const reqChannel = await getSetting('withdraw_request_channel', '');
+                const reqChannel = await getSetting('withdraw_request_channel', DEFAULT_PAYMENT_CHANNEL_ID);
                 if (!reqChannel) {
                     await sendMessage(chatId, "⚠️ Withdraw Request Channel is not configured yet.", await getUserMenu(fromId));
                     await clearUserState(fromId);
@@ -1798,7 +1917,7 @@ async function handleUpdate(update) {
                     created_at: Math.floor(Date.now() / 1000)
                 };
 
-                // Deduct balance
+                // Instant Balance Cut
                 await updateUser(fromId, { balance: Math.max(0, currentBalance - fixedAmount) });
                 await clearUserState(fromId);
 
@@ -1839,7 +1958,7 @@ async function handleUpdate(update) {
                 return;
             }
             await clearAdminState(fromId);
-            await sendMessage(chatId, "🛠 <b>Admin Panel Activated</b>", getAdminMenu(isSuperAdmin(fromId)));
+            await sendMessage(chatId, "🛠 <b>Admin Panel Activated</b>", await getAdminMenu(isSuperAdmin(fromId)));
             return;
         }
 
@@ -1850,11 +1969,11 @@ async function handleUpdate(update) {
             return;
         }
 
-        // 1. MY ACCOUNT (WITH DYNAMIC SUPPORT BUTTON)
+        // 1. MY ACCOUNT (WITH EMBEDDED SUPPORT BUTTON ONLY)
         if (text === '👤 My Account') {
             const u = await getUser(fromId);
             const coinName = await getSetting('coin_name', 'STAR');
-            const supportUrl = await getSetting('support_url', 'https://t.me/Sakib_Developer1');
+            const supportUrl = await getSetting('support_url', DEFAULT_SUPPORT_URL);
 
             const accText = 
                 `👤 <b>MY ACCOUNT</b>\n━━━━━━━━━━━━━━━━━━\n\n` +
@@ -1909,7 +2028,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // Check first withdraw requirement early
+            // Early check for 1st withdraw requirement
             const isFirstWithdraw = !u?.has_withdrawn;
             const requiredRefs = Number(await getSetting('first_withdraw_refs', 3));
             const userRefs = Number(u?.total_referrals || 0);
@@ -1958,8 +2077,8 @@ async function handleUpdate(update) {
             const customPayouts = await getSetting('custom_payouts_done', '0');
             const coinName = await getSetting('coin_name', 'STAR');
 
-            const sourceName = (await getSetting('source_name', 'RJ Maker Pro')) || 'RJ Maker Pro';
-            const sourceLink = (await getSetting('source_link', '')) || '';
+            const sourceName = (await getSetting('source_name', DEVELOPER_NAME)) || DEVELOPER_NAME;
+            const sourceLink = (await getSetting('source_link', DEVELOPER_LINK)) || DEVELOPER_LINK;
 
             let sourceDisplay = escapeHtml(sourceName);
             if (sourceLink) {
@@ -1980,13 +2099,24 @@ async function handleUpdate(update) {
         // ADMIN PANEL BUTTONS
         // ---------------------------------------------------------
         if (isAdm) {
-            if (text === '⚙️ Central Settings') {
-                await sendMessage(chatId, "⚙️ <b>Central Configuration</b>\nনিচে থেকে যেকোনো সেটিং সিলেক্ট করে পরিবর্তন করুন:", centralSettingsKeyboard());
+            // TOGGLE BOT POWER (ON / OFF)
+            if (text.startsWith('🟢 Bot: Active (ON)') || text.startsWith('🔴 Bot: OFF (Maintenance)')) {
+                const currentStatus = await isBotActive();
+                const newStatus = currentStatus ? 'off' : 'on';
+                await setSetting('bot_power_status', newStatus);
+                cache.botActive = newStatus === 'on';
+                cache.botActiveExpiresAt = Date.now() + 30000;
+                await sendMessage(chatId, `🔄 <b>Bot Status Updated:</b> <b>${newStatus === 'on' ? '🟢 ONLINE' : '🔴 OFFLINE (Maintenance)'}</b>`, await getAdminMenu(isSuperAdmin(fromId)));
                 return;
             }
 
-            if (text === '🛡️ Security Management') {
-                await sendMessage(chatId, "🛡️ <b>Security (Blacklist & Whitelist)</b>\nনিচে থেকে অ্যাকশন নির্বাচন করুন:", securityKeyboard());
+            if (text === '⚙️ Central Settings') {
+                await sendMessage(chatId, "⚙️ <b>Central Configuration</b>\nনিচে থেকে যেকোনো সেটিং সিলেক্ট করে এডিট করুন:", centralSettingsKeyboard());
+                return;
+            }
+
+            if (text.startsWith('🛡️ Security')) {
+                await sendMessage(chatId, "🛡️ <b>Security Management</b>\nমোবাইল সিকিউরিটির মতো ব্লকলিস্ট ও হোয়াইটলিস্ট কন্ট্রোল:", await securityKeyboard());
                 return;
             }
 
@@ -2002,7 +2132,7 @@ async function handleUpdate(update) {
                 return;
             }
 
-            // SMART CHANNEL BROADCAST WITH BOT ADMIN CHECK & PER-CHANNEL BUTTONS
+            // SMART CHANNEL BROADCAST WITH PARALLEL ADMIN CHECK
             if (text === '📢 Channel Broadcast') {
                 const channels = await getAllForceChannels();
                 const entries = Object.entries(channels);
@@ -2012,21 +2142,25 @@ async function handleUpdate(update) {
                     return;
                 }
 
-                await sendMessage(chatId, "🔍 চ্যানেলগুলোর বট পারমিশন চেক করা হচ্ছে...");
+                // Check permissions parallelly (sub-300ms)
+                const checkStatusPromises = entries.map(async ([key, ch]) => {
+                    const isAdminThere = await isBotAdminInChat(ch.channel_id);
+                    return { key, ch, isAdminThere };
+                });
 
+                const checkedResults = await Promise.all(checkStatusPromises);
                 const inlineKb = [];
                 let report = "📢 <b>চ্যানেল ব্রডকাস্ট প্যানেল</b>\n━━━━━━━━━━━━━━━━━━\n\n";
 
-                for (const [key, ch] of entries) {
-                    const isAdminThere = await isBotAdminInChat(ch.channel_id);
-                    const statusText = isAdminThere ? "✅ Bot Admin" : "⚠️ Bot Not Admin";
-                    report += `• <b>${escapeHtml(ch.channel_name || 'Channel')}</b>: ${statusText}\n`;
+                for (const item of checkedResults) {
+                    const statusText = item.isAdminThere ? "✅ Bot Admin" : "⚠️ Bot Not Admin";
+                    report += `• <b>${escapeHtml(item.ch.channel_name || 'Channel')}</b>: ${statusText}\n`;
 
                     inlineKb.push([
                         { 
-                            text: `${isAdminThere ? '📢' : '⚠️'} ${ch.channel_name || 'Channel'} (${statusText})`, 
-                            callback_data: `bc_select_channel_${key}`, 
-                            style: isAdminThere ? 'primary' : 'danger' 
+                            text: `${item.isAdminThere ? '📢' : '⚠️'} ${item.ch.channel_name || 'Channel'} (${statusText})`, 
+                            callback_data: `bc_select_channel_${item.key}`, 
+                            style: item.isAdminThere ? 'primary' : 'danger' 
                         }
                     ]);
                 }
@@ -2035,12 +2169,11 @@ async function handleUpdate(update) {
                     { text: '📢 Broadcast to ALL Channels', callback_data: 'bc_all_channels', style: 'success' }
                 ]);
 
-                report += `\n<i>নির্দিষ্ট চ্যানেলে ব্রডকাস্ট করতে বাটনে ক্লিক করুন:</i>`;
+                report += `\n<i>নির্দিষ্ট চ্যানেলে ব্রডকাস্ট পাঠাতে বাটনে ক্লিক করুন:</i>`;
                 await sendMessage(chatId, report, { inline_keyboard: inlineKb });
                 return;
             }
 
-            // USER BROADCAST
             if (text === '📢 Users Broadcast') {
                 await setAdminState(fromId, 'awaiting_broadcast_message');
                 await sendMessage(chatId, "📢 <b>ইউজার ব্রডকাস্ট</b>\n\nসকল ইউজারের কাছে পাঠানোর জন্য মেসেজটি পাঠান (Text, Photo, Video, File, Forward):", getCancelKeyboard());
@@ -2056,9 +2189,9 @@ async function handleUpdate(update) {
 
             if (text === '🔧 Source Settings') {
                 await setAdminState(fromId, 'set_source_info');
-                const curName = await getSetting('source_name', 'RJ Maker Pro');
-                const curLink = await getSetting('source_link', '');
-                await sendMessage(chatId, `🔧 <b>Source Info</b>\n\nবর্তমান: <b>${escapeHtml(curName)}</b> (${escapeHtml(curLink || 'None')})\n\nনতুন নাম এবং লিংক দিন: <code>NAME | LINK</code>`, getCancelKeyboard());
+                const curName = await getSetting('source_name', DEVELOPER_NAME);
+                const curLink = await getSetting('source_link', DEVELOPER_LINK);
+                await sendMessage(chatId, `🔧 <b>Source Settings</b>\n\nবর্তমান Source: <b>${escapeHtml(curName)}</b>\nবর্তমান Link: <code>${escapeHtml(curLink)}</code>\n\nনতুন নাম এবং লিংক দিন: <code>NAME | LINK</code>`, getCancelKeyboard());
                 return;
             }
 
@@ -2072,7 +2205,7 @@ async function handleUpdate(update) {
 
 /*
 |--------------------------------------------------------------------------
-| 24/7 EXPRESS SERVER SETUP
+| 24/7 EXPRESS SERVER & WEBHOOK
 |--------------------------------------------------------------------------
 */
 const app = express();
@@ -2090,7 +2223,7 @@ app.post('/api/index', async (req, res) => {
     try {
         await handleUpdate(req.body || {});
     } catch (err) {
-        console.error(err);
+        console.error('Update Error:', err);
     }
     return res.status(200).send('OK');
 });
@@ -2110,7 +2243,7 @@ app.listen(PORT, async () => {
     try {
         const webhookUrl = `${APP_URL}/api/index`;
         const res = await telegramApi('setWebhook', { url: webhookUrl, drop_pending_updates: true });
-        console.log('Auto Webhook Status:', res);
+        console.log('Webhook Setup Status:', res);
     } catch (err) {
         console.error('Webhook Setup Error:', err);
     }
